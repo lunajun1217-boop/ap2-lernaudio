@@ -127,6 +127,10 @@
   .guide summary{color:var(--accent);padding:9px 0}
   .guide p{font-size:12.5px;line-height:1.65;color:var(--muted);margin:9px 0 0}
   .guide b{color:var(--text)}
+  .vdiag{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;line-height:1.5;
+    white-space:pre-wrap;word-break:break-all;color:var(--muted);background:var(--card);
+    border-radius:9px;padding:9px;margin:7px 0 0;max-height:230px;overflow:auto;
+    -webkit-user-select:text;user-select:text}
   .warn{border:1px solid var(--amber);background:color-mix(in srgb,var(--amber) 10%,transparent);
     border-radius:12px;padding:11px 13px;font-size:12.5px;line-height:1.55;margin-bottom:13px}
   .warn b{color:var(--amber)}
@@ -257,7 +261,15 @@
         <div><select id="voiceKo" onchange="saveSettings()"></select></div>
         <button class="vtest" data-i18n="btn.test" onclick="testVoice('ko')"></button>
       </div>
-      <p class="hint" data-i18n="hint.voice"></p>
+      <button class="b b-ghost" style="margin-top:11px" data-i18n="btn.refreshVoice" onclick="refreshVoices()"></button>
+      <p class="hint" data-i18n-html="hint.voice"></p>
+
+      <details class="guide">
+        <summary data-i18n="diag.title"></summary>
+        <p data-i18n-html="diag.note"></p>
+        <p class="tiny" style="margin:6px 0 0">getVoices(): <b id="voiceCount">0</b></p>
+        <pre class="vdiag" id="voiceDiag">—</pre>
+      </details>
 
       <details class="guide">
         <summary data-i18n="bg.title"></summary>
@@ -312,7 +324,7 @@
 (function(){
 "use strict";
 
-var APP_VER="2026-09-07c";
+var APP_VER="2026-09-07d";
 var K_LIB="ap2_library_v1", K_SET="ap2_settings_v1", K_LANG="ap2_lang";
 var PDFJS="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 var PDFJS_WORKER="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -332,8 +344,12 @@ ko:{
  "set.sentRep":"문장별 반복","set.range":"구간 반복 (A → B)",
  "set.qa":"문제-정답 모드","set.qapause":"질문 뒤 멈춤",
  "set.voiceDe":"독일어 목소리","set.voiceKo":"한국어 목소리","set.pitch":"목소리 높이",
- "hint.voice":"목소리는 폰에 설치된 것만 나옵니다. 좋은 음성을 설치하면 훨씬 자연스러워집니다 — 아래 안내를 참고하세요.",
+ "hint.voice":"목소리는 폰에 설치된 것만 나옵니다. iPhone은 같은 이름(Helena 등)으로 기본·Premium 두 개가 함께 뜨므로, 이름 뒤의 <b>Premium</b> 표시를 보고 고르세요.",
  "v.good":"고품질","v.basic":"기본",
+ "btn.refreshVoice":"🔄 목소리 목록 새로고침",
+ "t.voiceCount":"목소리 {0}개를 찾았습니다",
+ "diag.title":"설치된 목소리 전체 보기 (진단)",
+ "diag.note":"새 음성을 설치했는데 위 목록에 안 나오면 <b>목록 새로고침</b>을 누르세요. iPhone은 앱을 완전히 껐다 켜야 나오는 경우도 있습니다. 아래는 브라우저가 실제로 넘겨주는 목록입니다 — <b>premium / enhanced</b> 가 들어간 줄이 고품질 음성입니다.",
  "btn.test":"들어보기","test.de":"Guten Tag. Dies ist eine Beispielstimme für die Prüfungsvorbereitung.",
  "test.ko":"안녕하세요. 이 목소리로 읽어드립니다.",
  "guide.title":"목소리가 로봇 같으면 (설치 안내)",
@@ -383,8 +399,12 @@ de:{
  "set.sentRep":"Satz wiederholen","set.range":"Abschnitt A → B",
  "set.qa":"Frage-Antwort-Modus","set.qapause":"Pause nach der Frage",
  "set.voiceDe":"Deutsche Stimme","set.voiceKo":"Koreanische Stimme","set.pitch":"Stimmlage",
- "hint.voice":"Es erscheinen nur Stimmen, die auf dem Gerät installiert sind. Eine hochwertige Stimme klingt deutlich natürlicher — siehe Anleitung unten.",
+ "hint.voice":"Es erscheinen nur installierte Stimmen. Am iPhone steht derselbe Name (z. B. Helena) doppelt in der Liste — achte auf den Zusatz <b>Premium</b>.",
  "v.good":"hochwertig","v.basic":"Standard",
+ "btn.refreshVoice":"🔄 Stimmenliste aktualisieren",
+ "t.voiceCount":"{0} Stimmen gefunden",
+ "diag.title":"Alle installierten Stimmen anzeigen (Diagnose)",
+ "diag.note":"Wenn eine neu geladene Stimme oben fehlt, auf <b>Stimmenliste aktualisieren</b> tippen. Am iPhone hilft es oft, die App einmal komplett zu schließen. Unten steht, was der Browser tatsächlich liefert — Zeilen mit <b>premium / enhanced</b> sind die hochwertigen Stimmen.",
  "btn.test":"Anhören","test.de":"Guten Tag. Dies ist eine Beispielstimme für die Prüfungsvorbereitung.",
  "test.ko":"안녕하세요. 이 목소리로 읽어드립니다.",
  "guide.title":"Klingt die Stimme roboterhaft? (Anleitung)",
@@ -432,7 +452,8 @@ function t(k){
 var lib=[], cur=null, chunks=[], idx=0, playing=false, loopDone=0;
 var rangeA=null, rangeB=null, sentLeft=0, wake=null, sleepTimer=null, sleepEnd=0, sleepTick=null;
 var voices=[], curUtt=null, pausedByUs=false;
-var S={ speed:1, pitch:1, loop:1, sentRep:1, qa:true, qaPause:3, voiceDe:"", voiceKo:"" };
+var S={ speed:1, pitch:1, loop:1, sentRep:1, qa:true, qaPause:3,
+        voiceDe:"", voiceKo:"", voiceDeSet:false, voiceKoSet:false };
 
 function lsGet(k,f){ try{ var v=localStorage.getItem(k); return v?JSON.parse(v):f; }catch(e){ return f; } }
 function lsSet(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
@@ -527,6 +548,18 @@ function loadVoices(){
   voices=window.speechSynthesis.getVoices()||[];
   fillVoiceSelects();
 }
+/* iOS lists the compact AND the downloaded Premium voice under the SAME name
+   (both "Helena"), so a name is not an identity — always key on voiceURI. */
+function vKey(v){ return v.voiceURI || ((v.name||"")+"|"+(v.lang||"")); }
+function vQual(v){
+  var n=(v.name||"")+" "+(v.voiceURI||"");
+  if(/premium/i.test(n)) return "Premium";
+  if(/enhanced/i.test(n)) return "Enhanced";
+  if(/neural|natural|wavenet/i.test(n)) return "Neural";
+  if(/siri/i.test(n)) return "Siri";
+  if(/compact|kompakt/i.test(n)) return "Kompakt";
+  return "";
+}
 /* rank the installed voices — the "robotic" ones are the compact system voices */
 function vScore(v){
   var n=(v.name||"")+" "+(v.voiceURI||"");
@@ -554,13 +587,48 @@ function fillVoiceSelects(){
     var keep=S[key];
     sel.innerHTML=list.length
       ? list.map(function(v){
-          var tag=vScore(v)>=50?("  ★ "+t("v.good")):"";
-          return '<option value="'+esc(v.name)+'">'+esc(v.name+tag)+'</option>'; }).join("")
+          var q=vQual(v), tag=vScore(v)>=50?("  ★ "+t("v.good")):"";
+          return '<option value="'+esc(vKey(v))+'">'+esc(v.name+(q?" · "+q:"")+tag)+'</option>'; }).join("")
       : '<option value="">'+esc(t("t.noVoiceLang"))+'</option>';
-    if(keep&&list.some(function(v){ return v.name===keep; })) sel.value=keep;
-    else if(list.length){ sel.value=list[0].name; S[key]=list[0].name; lsSet(K_SET,S); }
+    if(!list.length) return;
+    /* Only a deliberate choice is kept. Otherwise always take the best voice
+       available right now — so a newly installed Premium voice is used at once. */
+    var pick=null;
+    if(S[key+"Set"]){
+      pick=list.filter(function(v){ return vKey(v)===keep; })[0];
+      if(!pick&&keep) pick=list.filter(function(v){ return v.name===keep; })[0];
+    }
+    if(!pick) pick=list[0];
+    sel.value=vKey(pick);
+    if(S[key]!==vKey(pick)){ S[key]=vKey(pick); lsSet(K_SET,S); }
   });
+  renderVoiceDiag();
 }
+function renderVoiceDiag(){
+  var el=document.getElementById("voiceDiag");
+  if(!el) return;
+  el.textContent=voices.length
+    ? voices.map(function(v){
+        return v.name+"  ["+(v.lang||"?")+"]  "+(vQual(v)||"-")+"\n   "+(v.voiceURI||"-"); }).join("\n")
+    : "—";
+  var c=document.getElementById("voiceCount");
+  if(c) c.textContent=String(voices.length);
+}
+/* iOS only fills getVoices() after the speech engine has been touched once,
+   and a freshly downloaded voice shows up only after that nudge. */
+window.refreshVoices=function(){
+  try{ window.speechSynthesis.cancel(); }catch(e){}
+  try{ var u=new SpeechSynthesisUtterance(" "); u.volume=0; window.speechSynthesis.speak(u); }catch(e){}
+  var n0=voices.length, tries=0;
+  var iv=setInterval(function(){
+    tries++; loadVoices();
+    if(voices.length!==n0||tries>=10){
+      clearInterval(iv);
+      try{ window.speechSynthesis.cancel(); }catch(e){}
+      toast(t("t.voiceCount",voices.length));
+    }
+  },500);
+};
 window.testVoice=function(code){
   var v=voiceFor(code);
   if(!v){ toast(t("t.noVoiceLang")); return; }
@@ -570,10 +638,12 @@ window.testVoice=function(code){
   try{ window.speechSynthesis.speak(u); }catch(e){}
 };
 function voiceFor(code){
-  var want=code==="ko"?document.getElementById("voiceKo").value:document.getElementById("voiceDe").value;
-  var v=voices.filter(function(x){ return x.name===want; })[0];
-  if(v) return v;
-  return voices.filter(function(x){ return (x.lang||"").toLowerCase().indexOf(code)===0; })[0]||null;
+  var el=document.getElementById(code==="ko"?"voiceKo":"voiceDe");
+  var want=(el&&el.value)||S[code==="ko"?"voiceKo":"voiceDe"];
+  var v=voices.filter(function(x){ return vKey(x)===want; })[0];
+  if(!v&&want) v=voices.filter(function(x){ return x.name===want; })
+                     .sort(function(a,b){ return vScore(b)-vScore(a); })[0];
+  return v||voicesFor(code)[0]||null;
 }
 
 /* ===================== settings ===================== */
@@ -582,8 +652,8 @@ function loadSettings(){
   if(s) for(var k in S) if(s[k]!==undefined) S[k]=s[k];
 }
 window.saveSettings=function(){
-  S.voiceDe=document.getElementById("voiceDe").value;
-  S.voiceKo=document.getElementById("voiceKo").value;
+  S.voiceDe=document.getElementById("voiceDe").value; S.voiceDeSet=true;
+  S.voiceKo=document.getElementById("voiceKo").value; S.voiceKoSet=true;
   lsSet(K_SET,S);
 };
 function segment(id,items,active,cb){
@@ -1113,6 +1183,8 @@ function applyLang(){
     window.speechSynthesis.onvoiceschanged=loadVoices;
     setTimeout(loadVoices,600);
     setTimeout(loadVoices,1800);
+    setTimeout(loadVoices,4000);
+    setTimeout(loadVoices,8000);
   }
   if(lib.length) showLib(); else showInput();
 
