@@ -36,7 +36,7 @@
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   body{
-    margin:0 auto;padding:14px 14px 130px;background:var(--bg);color:var(--text);
+    margin:0 auto;padding:14px 14px 182px;background:var(--bg);color:var(--text);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans KR",sans-serif;
     font-size:15px;line-height:1.45;max-width:760px;
   }
@@ -106,6 +106,11 @@
   .dock .now{font-size:11.5px;color:var(--muted);margin-bottom:6px;overflow:hidden;
     text-overflow:ellipsis;white-space:nowrap;text-align:center}
   .sleepon{color:var(--amber);font-weight:800}
+  .dockrow{display:flex;align-items:center;gap:8px;margin-top:8px}
+  .dockrow .dl{font-size:10.5px;color:var(--muted);font-weight:800;flex:0 0 30px;
+    letter-spacing:.2px;text-align:right}
+  .dockrow .seg{flex:1;min-width:0;padding:2px}
+  .dockrow .seg button{padding:7px 2px;font-size:11.5px}
 
   .lib{background:var(--card);border-radius:13px;padding:11px 13px;margin-bottom:8px;
     box-shadow:var(--shadow);display:flex;gap:11px;align-items:center;cursor:pointer}
@@ -116,6 +121,12 @@
   .empty{text-align:center;color:var(--muted);font-size:13px;padding:22px 10px}
 
   .hint{font-size:11.5px;color:var(--muted);margin:8px 2px 0;line-height:1.55}
+  .vtest{flex:0 0 auto;background:var(--chip);border:none;border-radius:11px;height:43px;
+    padding:0 14px;color:var(--accent);font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap}
+  .guide{margin-top:12px;background:var(--field);border-radius:12px;padding:4px 12px 10px}
+  .guide summary{color:var(--accent);padding:9px 0}
+  .guide p{font-size:12.5px;line-height:1.65;color:var(--muted);margin:9px 0 0}
+  .guide b{color:var(--text)}
   .warn{border:1px solid var(--amber);background:color-mix(in srgb,var(--amber) 10%,transparent);
     border-radius:12px;padding:11px 13px;font-size:12.5px;line-height:1.55;margin-bottom:13px}
   .warn b{color:var(--amber)}
@@ -204,11 +215,6 @@
     <summary data-i18n="set.title"></summary>
 
     <div style="margin-top:12px">
-      <label data-i18n="set.speed"></label>
-      <div class="seg" id="segSpeed"></div>
-    </div>
-
-    <div style="margin-top:12px">
       <label data-i18n="set.loop"></label>
       <div class="seg" id="segLoop"></div>
     </div>
@@ -238,11 +244,36 @@
     </div>
 
     <div style="margin-top:12px">
-      <label data-i18n="set.voiceDe"></label>
-      <select id="voiceDe" class="mb" onchange="saveSettings()"></select>
+      <label data-i18n="set.pitch"></label>
+      <div class="seg" id="segPitch"></div>
+
+      <label style="margin-top:12px" data-i18n="set.voiceDe"></label>
+      <div class="row mb">
+        <div><select id="voiceDe" onchange="saveSettings()"></select></div>
+        <button class="vtest" data-i18n="btn.test" onclick="testVoice('de')"></button>
+      </div>
       <label data-i18n="set.voiceKo"></label>
-      <select id="voiceKo" onchange="saveSettings()"></select>
+      <div class="row">
+        <div><select id="voiceKo" onchange="saveSettings()"></select></div>
+        <button class="vtest" data-i18n="btn.test" onclick="testVoice('ko')"></button>
+      </div>
       <p class="hint" data-i18n="hint.voice"></p>
+
+      <details class="guide">
+        <summary data-i18n="bg.title"></summary>
+        <p data-i18n-html="bg.ios"></p>
+        <p data-i18n-html="bg.lock"></p>
+        <p data-i18n-html="bg.tip"></p>
+        <p data-i18n-html="bg.android"></p>
+      </details>
+
+      <details class="guide">
+        <summary data-i18n="guide.title"></summary>
+        <p data-i18n-html="guide.ios"></p>
+        <p data-i18n-html="guide.android"></p>
+        <p data-i18n-html="guide.pick"></p>
+        <p data-i18n-html="guide.tip"></p>
+      </details>
     </div>
   </details>
 
@@ -264,7 +295,14 @@
       <button class="b b-acc" id="btnPlay" onclick="togglePlay()"></button>
       <button class="rnd" onclick="nextSent()" aria-label="next">⏭</button>
     </div>
-    <div class="seg" id="segSleep" style="margin-top:9px"></div>
+    <div class="dockrow">
+      <span class="dl" data-i18n="set.speed"></span>
+      <div class="seg" id="segSpeed"></div>
+    </div>
+    <div class="dockrow">
+      <span class="dl" data-i18n="dock.sleep"></span>
+      <div class="seg" id="segSleep"></div>
+    </div>
   </div>
 </div>
 
@@ -274,7 +312,7 @@
 (function(){
 "use strict";
 
-var APP_VER="2026-09-06a";
+var APP_VER="2026-09-07c";
 var K_LIB="ap2_library_v1", K_SET="ap2_settings_v1", K_LANG="ap2_lang";
 var PDFJS="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 var PDFJS_WORKER="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -290,11 +328,25 @@ ko:{
  "hint.input":"PDF는 텍스트가 들어 있는 파일만 읽을 수 있습니다. 스캔한 이미지 PDF는 글자를 못 읽습니다.",
  "lib.title":"보관함","lib.empty":"저장된 텍스트가 없습니다",
  "btn.backupLib":"백업 (JSON)","btn.restoreLib":"백업 불러오기","btn.editText":"텍스트 수정",
- "set.title":"재생 설정","set.speed":"속도","set.loop":"전체 반복",
+ "set.title":"재생 설정","set.speed":"속도","dock.sleep":"타이머","set.loop":"전체 반복",
  "set.sentRep":"문장별 반복","set.range":"구간 반복 (A → B)",
  "set.qa":"문제-정답 모드","set.qapause":"질문 뒤 멈춤",
- "set.voiceDe":"독일어 목소리","set.voiceKo":"한국어 목소리",
- "hint.voice":"목소리는 폰에 설치된 것만 나옵니다. iPhone: 설정 → 손쉬운 사용 → 음성 콘텐츠 → 음성 에서 독일어 음성을 추가할 수 있습니다.",
+ "set.voiceDe":"독일어 목소리","set.voiceKo":"한국어 목소리","set.pitch":"목소리 높이",
+ "hint.voice":"목소리는 폰에 설치된 것만 나옵니다. 좋은 음성을 설치하면 훨씬 자연스러워집니다 — 아래 안내를 참고하세요.",
+ "v.good":"고품질","v.basic":"기본",
+ "btn.test":"들어보기","test.de":"Guten Tag. Dies ist eine Beispielstimme für die Prüfungsvorbereitung.",
+ "test.ko":"안녕하세요. 이 목소리로 읽어드립니다.",
+ "guide.title":"목소리가 로봇 같으면 (설치 안내)",
+ "guide.ios":"<b>iPhone · iPad</b><br>설정 → <b>손쉬운 사용</b> → <b>음성 콘텐츠</b> → <b>음성</b> → <b>Deutsch</b> 를 선택하고, 이름 옆에 <b>Premium</b> 또는 <b>고품질</b> 이라고 적힌 음성을 받으세요. (Anna, Helena, Markus 등) 용량이 100MB 정도라 Wi-Fi에서 받는 게 좋습니다. 받은 뒤 이 앱을 완전히 껐다 켜면 목록에 나타납니다.",
+ "guide.android":"<b>Android</b><br>설정 → 접근성 → 텍스트 음성 변환 → <b>Google 음성 인식기</b> → 언어 데이터 설치 → Deutsch.",
+ "guide.pick":"설치한 뒤 위 목록에서 <b>고품질</b> 표시가 붙은 음성을 고르고 <b>들어보기</b>로 비교해 보세요. 앱이 자동으로 가장 좋은 음성을 먼저 고릅니다.",
+ "guide.tip":"속도를 <b>0.85배</b>로 낮추면 훨씬 사람처럼 들립니다. 목소리 높이도 조금 낮추면 부드러워집니다.",
+ "t.noVoiceLang":"이 언어의 음성이 설치되어 있지 않습니다",
+ "bg.title":"화면을 끄면 멈추는 이유",
+ "bg.ios":"iPhone은 웹 음성 읽기를 <b>화면이 꺼지거나 다른 앱으로 넘어가면 중단</b>합니다. 브라우저 기술의 제약이라 앱에서 우회할 수 없습니다.",
+ "bg.lock":"대신 <b>잠금화면 재생 컨트롤</b>을 붙여놨습니다. 재생 중에는 잠금화면과 제어센터에서 ▶︎ / ⏸ / ⏭ 를 쓸 수 있고, 이어폰 버튼도 먹습니다.",
+ "bg.tip":"긴 시간 들으실 때는 <b>설정 → 디스플레이 → 자동 잠금 → 안 함</b> 으로 두고, 화면을 아래로 향하게 두거나 밝기를 최소로 낮추세요. 수면 타이머가 알아서 꺼줍니다.",
+ "bg.android":"Android는 화면을 꺼도 계속 읽는 경우가 많습니다.",
  "btn.setA":"A 지정","btn.setB":"B 지정","btn.rangeOff":"구간 해제",
  "loop.1":"1회","loop.2":"2회","loop.3":"3회","loop.5":"5회","loop.inf":"무한",
  "sent.1":"1번","sent.2":"2번","sent.3":"3번",
@@ -327,11 +379,25 @@ de:{
  "hint.input":"Aus PDFs wird nur echter Text gelesen. Eingescannte Bild-PDFs enthalten keinen Text.",
  "lib.title":"Ablage","lib.empty":"Noch keine Texte gespeichert",
  "btn.backupLib":"Backup (JSON)","btn.restoreLib":"Backup laden","btn.editText":"Text bearbeiten",
- "set.title":"Wiedergabe-Einstellungen","set.speed":"Tempo","set.loop":"Ganzer Text",
+ "set.title":"Wiedergabe-Einstellungen","set.speed":"Tempo","dock.sleep":"Timer","set.loop":"Ganzer Text",
  "set.sentRep":"Satz wiederholen","set.range":"Abschnitt A → B",
  "set.qa":"Frage-Antwort-Modus","set.qapause":"Pause nach der Frage",
- "set.voiceDe":"Deutsche Stimme","set.voiceKo":"Koreanische Stimme",
- "hint.voice":"Es erscheinen nur Stimmen, die auf dem Gerät installiert sind. iPhone: Einstellungen → Bedienungshilfen → Gesprochene Inhalte → Stimmen.",
+ "set.voiceDe":"Deutsche Stimme","set.voiceKo":"Koreanische Stimme","set.pitch":"Stimmlage",
+ "hint.voice":"Es erscheinen nur Stimmen, die auf dem Gerät installiert sind. Eine hochwertige Stimme klingt deutlich natürlicher — siehe Anleitung unten.",
+ "v.good":"hochwertig","v.basic":"Standard",
+ "btn.test":"Anhören","test.de":"Guten Tag. Dies ist eine Beispielstimme für die Prüfungsvorbereitung.",
+ "test.ko":"안녕하세요. 이 목소리로 읽어드립니다.",
+ "guide.title":"Klingt die Stimme roboterhaft? (Anleitung)",
+ "guide.ios":"<b>iPhone · iPad</b><br>Einstellungen → <b>Bedienungshilfen</b> → <b>Gesprochene Inhalte</b> → <b>Stimmen</b> → <b>Deutsch</b>, dann eine Stimme mit dem Zusatz <b>Premium</b> laden (z. B. Anna, Helena, Markus). Das sind rund 100 MB, am besten über WLAN. Danach die App einmal komplett schließen und neu öffnen.",
+ "guide.android":"<b>Android</b><br>Einstellungen → Bedienungshilfen → Text-in-Sprache → <b>Google Sprachausgabe</b> → Sprachdaten installieren → Deutsch.",
+ "guide.pick":"Danach oben eine Stimme mit dem Hinweis <b>hochwertig</b> wählen und mit <b>Anhören</b> vergleichen. Die App wählt automatisch die beste vorhandene Stimme vor.",
+ "guide.tip":"Mit Tempo <b>0.85×</b> klingt es merklich menschlicher. Eine leicht tiefere Stimmlage wirkt ruhiger.",
+ "t.noVoiceLang":"Für diese Sprache ist keine Stimme installiert",
+ "bg.title":"Warum stoppt es bei ausgeschaltetem Display?",
+ "bg.ios":"Das iPhone <b>unterbricht die Web-Sprachausgabe</b>, sobald das Display ausgeht oder eine andere App in den Vordergrund kommt. Das ist eine Einschränkung des Browsers und lässt sich in der App nicht umgehen.",
+ "bg.lock":"Dafür gibt es jetzt <b>Steuerung auf dem Sperrbildschirm</b>: Während der Wiedergabe funktionieren ▶︎ / ⏸ / ⏭ im Kontrollzentrum und die Tasten am Kopfhörer.",
+ "bg.tip":"Für längeres Hören: <b>Einstellungen → Anzeige & Helligkeit → Automatische Sperre → Nie</b>, Helligkeit ganz runter und das Display nach unten legen. Der Schlaf-Timer schaltet dann selbst ab.",
+ "bg.android":"Unter Android läuft die Wiedergabe bei ausgeschaltetem Display meist weiter.",
  "btn.setA":"A setzen","btn.setB":"B setzen","btn.rangeOff":"Abschnitt aus",
  "loop.1":"1×","loop.2":"2×","loop.3":"3×","loop.5":"5×","loop.inf":"∞",
  "sent.1":"1×","sent.2":"2×","sent.3":"3×",
@@ -366,7 +432,7 @@ function t(k){
 var lib=[], cur=null, chunks=[], idx=0, playing=false, loopDone=0;
 var rangeA=null, rangeB=null, sentLeft=0, wake=null, sleepTimer=null, sleepEnd=0, sleepTick=null;
 var voices=[], curUtt=null, pausedByUs=false;
-var S={ speed:1, loop:1, sentRep:1, qa:true, qaPause:3, voiceDe:"", voiceKo:"" };
+var S={ speed:1, pitch:1, loop:1, sentRep:1, qa:true, qaPause:3, voiceDe:"", voiceKo:"" };
 
 function lsGet(k,f){ try{ var v=localStorage.getItem(k); return v?JSON.parse(v):f; }catch(e){ return f; } }
 function lsSet(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
@@ -461,18 +527,48 @@ function loadVoices(){
   voices=window.speechSynthesis.getVoices()||[];
   fillVoiceSelects();
 }
+/* rank the installed voices — the "robotic" ones are the compact system voices */
+function vScore(v){
+  var n=(v.name||"")+" "+(v.voiceURI||"");
+  var s=0;
+  if(/premium/i.test(n)) s+=100;
+  if(/enhanced|neural|natural|wavenet/i.test(n)) s+=80;
+  if(/siri/i.test(n)) s+=70;
+  if(/google/i.test(n)) s+=55;
+  if(/microsoft/i.test(n)) s+=40;
+  if(v.localService===false) s+=25;
+  if(/compact|kompakt|espeak|pico/i.test(n)) s-=70;
+  if(/eloquence/i.test(n)) s-=50;
+  return s;
+}
+function voicesFor(code){
+  return voices.filter(function(v){ return (v.lang||"").toLowerCase().indexOf(code)===0; })
+    .sort(function(a,b){ return vScore(b)-vScore(a) || String(a.name).localeCompare(String(b.name)); });
+}
 function fillVoiceSelects(){
   ["de","ko"].forEach(function(code){
-    var sel=document.getElementById(code==="de"?"voiceDe":"voiceKo");
+    var key=code==="de"?"voiceDe":"voiceKo";
+    var sel=document.getElementById(key);
     if(!sel) return;
-    var list=voices.filter(function(v){ return (v.lang||"").toLowerCase().indexOf(code)===0; });
-    var keep=S[code==="de"?"voiceDe":"voiceKo"];
+    var list=voicesFor(code);
+    var keep=S[key];
     sel.innerHTML=list.length
-      ? list.map(function(v){ return '<option value="'+esc(v.name)+'">'+esc(v.name+" ("+v.lang+")")+'</option>'; }).join("")
-      : '<option value="">—</option>';
+      ? list.map(function(v){
+          var tag=vScore(v)>=50?("  ★ "+t("v.good")):"";
+          return '<option value="'+esc(v.name)+'">'+esc(v.name+tag)+'</option>'; }).join("")
+      : '<option value="">'+esc(t("t.noVoiceLang"))+'</option>';
     if(keep&&list.some(function(v){ return v.name===keep; })) sel.value=keep;
+    else if(list.length){ sel.value=list[0].name; S[key]=list[0].name; lsSet(K_SET,S); }
   });
 }
+window.testVoice=function(code){
+  var v=voiceFor(code);
+  if(!v){ toast(t("t.noVoiceLang")); return; }
+  try{ window.speechSynthesis.cancel(); }catch(e){}
+  var u=new SpeechSynthesisUtterance(t(code==="ko"?"test.ko":"test.de"));
+  u.voice=v; u.lang=v.lang; u.rate=S.speed; u.pitch=S.pitch;
+  try{ window.speechSynthesis.speak(u); }catch(e){}
+};
 function voiceFor(code){
   var want=code==="ko"?document.getElementById("voiceKo").value:document.getElementById("voiceDe").value;
   var v=voices.filter(function(x){ return x.name===want; })[0];
@@ -509,6 +605,8 @@ function buildSegments(){
     S.speed=parseFloat(v); lsSet(K_SET,S);
     if(playing){ restartCurrent(); }
   });
+  segment("segPitch",[{v:0.85,label:"▼▼"},{v:0.95,label:"▼"},{v:1,label:"1.0"},{v:1.1,label:"▲"}],
+    S.pitch,function(v){ S.pitch=parseFloat(v); lsSet(K_SET,S); if(playing) restartCurrent(); });
   segment("segLoop",[{v:1,label:t("loop.1")},{v:2,label:t("loop.2")},{v:3,label:t("loop.3")},
                      {v:5,label:t("loop.5")},{v:0,label:t("loop.inf")}],S.loop,function(v){
     S.loop=parseInt(v,10); lsSet(K_SET,S); updateMeta();
@@ -563,6 +661,8 @@ function play(){
   playing=true; pausedByUs=false;
   document.getElementById("btnPlay").textContent=t("btn.pause");
   requestWake();
+  keepAlive(true);
+  mediaSession();
   if(sentLeft<=0) sentLeft=S.sentRep;
   speakCurrent();
 }
@@ -572,6 +672,8 @@ function pause(){
   try{ window.speechSynthesis.cancel(); }catch(e){}
   document.getElementById("btnPlay").textContent=t("btn.play");
   releaseWake();
+  keepAlive(false);
+  mediaSession();
   saveProgress();
 }
 function stop(){
@@ -589,6 +691,7 @@ function speakCurrent(){
   var v=voiceFor(c.lang);
   if(v){ u.voice=v; u.lang=v.lang; } else { u.lang=c.lang==="ko"?"ko-KR":"de-DE"; }
   u.rate=S.speed;
+  u.pitch=S.pitch;
   u.onend=function(){
     if(!playing) return;
     curUtt=null;
@@ -618,7 +721,7 @@ function finish(){
   playing=false; loopDone=0;
   document.getElementById("btnPlay").textContent=t("btn.play");
   try{ window.speechSynthesis.cancel(); }catch(e){}
-  releaseWake(); saveProgress(); toast(t("t.done"));
+  releaseWake(); keepAlive(false); mediaSession(); saveProgress(); toast(t("t.done"));
 }
 function restartCurrent(){
   if(!playing) return;
@@ -644,6 +747,42 @@ function jumpTo(i){
   sentLeft=S.sentRep; updateMeta();
   if(playing) restartCurrent(); else highlight();
   saveProgress();
+}
+
+/* A looping silent track keeps a media session alive: that puts play/pause/next
+   on the lock screen and the headphone buttons, and on Android keeps the page
+   running with the display off. iOS still suspends speech in the background. */
+var silent=null;
+var SILENT_WAV="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAAZGF0YQAAAAA=";
+function keepAlive(on){
+  try{
+    if(on){
+      if(!silent){
+        silent=new Audio(SILENT_WAV);
+        silent.loop=true; silent.volume=0.001; silent.preload="auto";
+        silent.setAttribute("playsinline","");
+      }
+      var pr=silent.play();
+      if(pr&&pr.catch) pr.catch(function(){});
+    }else if(silent){ silent.pause(); }
+  }catch(e){}
+}
+function mediaSession(){
+  if(!("mediaSession" in navigator)) return;
+  try{
+    var c=chunks[idx];
+    navigator.mediaSession.metadata=new MediaMetadata({
+      title:(cur&&cur.title)||"AP2 Lernaudio",
+      artist:c?c.text.slice(0,90):"",
+      album:t("pos",Math.min(idx+1,chunks.length),chunks.length)
+    });
+    navigator.mediaSession.playbackState=playing?"playing":"paused";
+    navigator.mediaSession.setActionHandler("play",function(){ if(!playing) play(); });
+    navigator.mediaSession.setActionHandler("pause",function(){ if(playing) pause(); });
+    navigator.mediaSession.setActionHandler("nexttrack",function(){ nextSent(); });
+    navigator.mediaSession.setActionHandler("previoustrack",function(){ prevSent(); });
+    navigator.mediaSession.setActionHandler("stop",function(){ stop(); });
+  }catch(e){}
 }
 
 /* keep the screen awake while reading (iOS stops speech when it locks) */
@@ -701,6 +840,7 @@ function updateDockNow(){
     extra=' · <span class="sleepon">'+esc(t("sleepIn",left))+'</span>';
   }
   document.getElementById("dockNow").innerHTML=esc(s)+extra;
+  mediaSession();
 }
 
 /* ===================== range ===================== */
@@ -946,6 +1086,9 @@ function applyLang(){
   Array.prototype.forEach.call(document.querySelectorAll("[data-i18n-ph]"),function(el){
     el.setAttribute("placeholder",t(el.getAttribute("data-i18n-ph")));
   });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-i18n-html]"),function(el){
+    el.innerHTML=t(el.getAttribute("data-i18n-html"));
+  });
   document.getElementById("footNote").innerHTML=t("foot.note");
   document.getElementById("verLine").textContent=t("ver.label")+" v"+APP_VER;
   document.getElementById("btnPlay").textContent=t(playing?"btn.pause":"btn.play");
@@ -974,7 +1117,11 @@ function applyLang(){
   if(lib.length) showLib(); else showInput();
 
   document.addEventListener("visibilitychange",function(){
-    if(document.hidden&&playing) pause();
+    /* coming back after the OS suspended us: pick the reading up again */
+    if(!document.hidden&&playing){
+      keepAlive(true);
+      try{ if(!window.speechSynthesis.speaking&&!window.speechSynthesis.pending) speakCurrent(); }catch(e){}
+    }
   });
   window.addEventListener("pagehide",function(){ try{ window.speechSynthesis.cancel(); }catch(e){} });
 })();
