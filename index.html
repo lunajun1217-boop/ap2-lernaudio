@@ -107,8 +107,8 @@
     text-overflow:ellipsis;white-space:nowrap;text-align:center}
   .sleepon{color:var(--amber);font-weight:800}
   .dockrow{display:flex;align-items:center;gap:8px;margin-top:8px}
-  .dockrow .dl{font-size:10.5px;color:var(--muted);font-weight:800;flex:0 0 30px;
-    letter-spacing:.2px;text-align:right}
+  .dockrow .dl{font-size:10px;color:var(--muted);font-weight:800;flex:0 0 40px;
+    letter-spacing:0;text-align:right;white-space:nowrap}
   .dockrow .seg{flex:1;min-width:0;padding:2px}
   .dockrow .seg button{padding:7px 2px;font-size:11.5px}
 
@@ -248,6 +248,23 @@
     </div>
 
     <div style="margin-top:12px">
+      <label data-i18n="set.engine"></label>
+      <div class="seg" id="segEngine"></div>
+
+      <div id="neuralBox" hidden>
+        <label style="margin-top:12px" data-i18n="set.nvoice"></label>
+        <select id="nVoiceDe" onchange="pickNVoice()"></select>
+        <div class="bar" id="dlWrap" hidden style="margin-top:9px"><i id="dlBar"></i></div>
+        <div class="row" style="margin-top:9px">
+          <div><button class="b b-ghost" id="btnDl" data-i18n="btn.dlVoice" onclick="downloadVoice()"></button></div>
+          <button class="vtest" data-i18n="btn.test" onclick="testNeural()"></button>
+        </div>
+        <p class="hint" id="nStatus"></p>
+        <p class="hint" data-i18n-html="hint.neural"></p>
+      </div>
+    </div>
+
+    <div style="margin-top:12px" id="pitchRow">
       <label data-i18n="set.pitch"></label>
       <div class="seg" id="segPitch"></div>
 
@@ -273,6 +290,7 @@
 
       <details class="guide">
         <summary data-i18n="bg.title"></summary>
+        <p data-i18n-html="bg.fix"></p>
         <p data-i18n-html="bg.ios"></p>
         <p data-i18n-html="bg.lock"></p>
         <p data-i18n-html="bg.tip"></p>
@@ -318,13 +336,14 @@
   </div>
 </div>
 
+<audio id="player" playsinline preload="auto"></audio>
 <div class="toast" id="toast"></div>
 
 <script>
 (function(){
 "use strict";
 
-var APP_VER="2026-09-07d";
+var APP_VER="2026-09-08a";
 var K_LIB="ap2_library_v1", K_SET="ap2_settings_v1", K_LANG="ap2_lang";
 var PDFJS="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 var PDFJS_WORKER="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -347,6 +366,16 @@ ko:{
  "hint.voice":"목소리는 폰에 설치된 것만 나옵니다. iPhone은 같은 이름(Helena 등)으로 기본·Premium 두 개가 함께 뜨므로, 이름 뒤의 <b>Premium</b> 표시를 보고 고르세요.",
  "v.good":"고품질","v.basic":"기본",
  "btn.refreshVoice":"🔄 목소리 목록 새로고침",
+ "set.engine":"음성 엔진","eng.ios":"기기 음성","eng.neural":"신경망 음성",
+ "set.nvoice":"독일어 신경망 목소리","btn.dlVoice":"⬇︎ 이 목소리 받기",
+ "hint.neural":"신경망 음성은 <b>폰 안에서</b> 목소리를 만들어 냅니다. 처음 한 번만 받아두면 그 뒤로는 인터넷 없이 되고, 일반 오디오로 재생되기 때문에 <b>화면을 꺼도 계속 읽어줍니다</b>. 문장을 만드는 데 잠깐 걸리지만 다음 문장을 미리 만들어 두므로 끊기지 않습니다. 한국어는 Piper에 음성이 없어 Meta MMS 모델을 쓰고, 그것도 안 되면 기기 음성으로 읽습니다.",
+ "n.checking":"확인 중…","n.ready":"✅ 이 목소리는 폰에 저장되어 있습니다","n.notReady":"아직 받지 않았습니다 — [이 목소리 받기]를 누르세요",
+ "n.downloading":"받는 중… (Wi-Fi 권장, 중간에 앱을 닫지 마세요)","n.making":"🎧 목소리 만드는 중…",
+ "n.dlErr":"받기에 실패했습니다. 인터넷을 확인하고 다시 시도해 주세요.",
+ "n.libErr":"신경망 음성 모듈을 불러오지 못했습니다 (인터넷 확인)",
+ "n.synthErr":"신경망 음성에 실패해 기기 음성으로 전환했습니다",
+ "n.koFallback":"한국어 신경망 음성을 쓸 수 없어 기기 음성으로 읽습니다",
+ "t.voiceReady":"목소리 준비 완료",
  "t.voiceCount":"목소리 {0}개를 찾았습니다",
  "diag.title":"설치된 목소리 전체 보기 (진단)",
  "diag.note":"새 음성을 설치했는데 위 목록에 안 나오면 <b>목록 새로고침</b>을 누르세요. iPhone은 앱을 완전히 껐다 켜야 나오는 경우도 있습니다. 아래는 브라우저가 실제로 넘겨주는 목록입니다 — <b>premium / enhanced</b> 가 들어간 줄이 고품질 음성입니다.",
@@ -359,6 +388,7 @@ ko:{
  "guide.tip":"속도를 <b>0.85배</b>로 낮추면 훨씬 사람처럼 들립니다. 목소리 높이도 조금 낮추면 부드러워집니다.",
  "t.noVoiceLang":"이 언어의 음성이 설치되어 있지 않습니다",
  "bg.title":"화면을 끄면 멈추는 이유",
+ "bg.fix":"👉 <b>음성 엔진을 «신경망 음성»으로 바꾸면 화면을 꺼도 계속 읽어줍니다.</b> 아래 설명은 «기기 음성»을 쓸 때의 이야기입니다.",
  "bg.ios":"iPhone은 웹 음성 읽기를 <b>화면이 꺼지거나 다른 앱으로 넘어가면 중단</b>합니다. 브라우저 기술의 제약이라 앱에서 우회할 수 없습니다.",
  "bg.lock":"대신 <b>잠금화면 재생 컨트롤</b>을 붙여놨습니다. 재생 중에는 잠금화면과 제어센터에서 ▶︎ / ⏸ / ⏭ 를 쓸 수 있고, 이어폰 버튼도 먹습니다.",
  "bg.tip":"긴 시간 들으실 때는 <b>설정 → 디스플레이 → 자동 잠금 → 안 함</b> 으로 두고, 화면을 아래로 향하게 두거나 밝기를 최소로 낮추세요. 수면 타이머가 알아서 꺼줍니다.",
@@ -402,6 +432,16 @@ de:{
  "hint.voice":"Es erscheinen nur installierte Stimmen. Am iPhone steht derselbe Name (z. B. Helena) doppelt in der Liste — achte auf den Zusatz <b>Premium</b>.",
  "v.good":"hochwertig","v.basic":"Standard",
  "btn.refreshVoice":"🔄 Stimmenliste aktualisieren",
+ "set.engine":"Sprach-Engine","eng.ios":"Gerätestimme","eng.neural":"Neuronale Stimme",
+ "set.nvoice":"Neuronale deutsche Stimme","btn.dlVoice":"⬇︎ Diese Stimme laden",
+ "hint.neural":"Die neuronale Stimme wird <b>auf dem Gerät</b> erzeugt. Einmal geladen, läuft sie ohne Internet, und weil sie als normales Audio abgespielt wird, <b>liest sie bei ausgeschaltetem Display weiter</b>. Jeder Satz braucht kurz zum Erzeugen, der nächste wird aber im Voraus vorbereitet. Für Koreanisch hat Piper keine Stimme — dort wird Metas MMS-Modell benutzt, sonst die Gerätestimme.",
+ "n.checking":"Prüfe…","n.ready":"✅ Diese Stimme ist auf dem Gerät gespeichert","n.notReady":"Noch nicht geladen — auf [Diese Stimme laden] tippen",
+ "n.downloading":"Wird geladen… (WLAN empfohlen, App offen lassen)","n.making":"🎧 Stimme wird erzeugt…",
+ "n.dlErr":"Laden fehlgeschlagen. Internetverbindung prüfen und erneut versuchen.",
+ "n.libErr":"Modul für neuronale Stimmen konnte nicht geladen werden (Internet prüfen)",
+ "n.synthErr":"Neuronale Stimme fehlgeschlagen — zurück zur Gerätestimme",
+ "n.koFallback":"Keine neuronale koreanische Stimme — es liest die Gerätestimme",
+ "t.voiceReady":"Stimme bereit",
  "t.voiceCount":"{0} Stimmen gefunden",
  "diag.title":"Alle installierten Stimmen anzeigen (Diagnose)",
  "diag.note":"Wenn eine neu geladene Stimme oben fehlt, auf <b>Stimmenliste aktualisieren</b> tippen. Am iPhone hilft es oft, die App einmal komplett zu schließen. Unten steht, was der Browser tatsächlich liefert — Zeilen mit <b>premium / enhanced</b> sind die hochwertigen Stimmen.",
@@ -414,6 +454,7 @@ de:{
  "guide.tip":"Mit Tempo <b>0.85×</b> klingt es merklich menschlicher. Eine leicht tiefere Stimmlage wirkt ruhiger.",
  "t.noVoiceLang":"Für diese Sprache ist keine Stimme installiert",
  "bg.title":"Warum stoppt es bei ausgeschaltetem Display?",
+ "bg.fix":"👉 <b>Mit der Sprach-Engine «Neuronale Stimme» läuft die Wiedergabe bei ausgeschaltetem Display weiter.</b> Der folgende Text gilt für die «Gerätestimme».",
  "bg.ios":"Das iPhone <b>unterbricht die Web-Sprachausgabe</b>, sobald das Display ausgeht oder eine andere App in den Vordergrund kommt. Das ist eine Einschränkung des Browsers und lässt sich in der App nicht umgehen.",
  "bg.lock":"Dafür gibt es jetzt <b>Steuerung auf dem Sperrbildschirm</b>: Während der Wiedergabe funktionieren ▶︎ / ⏸ / ⏭ im Kontrollzentrum und die Tasten am Kopfhörer.",
  "bg.tip":"Für längeres Hören: <b>Einstellungen → Anzeige & Helligkeit → Automatische Sperre → Nie</b>, Helligkeit ganz runter und das Display nach unten legen. Der Schlaf-Timer schaltet dann selbst ab.",
@@ -453,7 +494,8 @@ var lib=[], cur=null, chunks=[], idx=0, playing=false, loopDone=0;
 var rangeA=null, rangeB=null, sentLeft=0, wake=null, sleepTimer=null, sleepEnd=0, sleepTick=null;
 var voices=[], curUtt=null, pausedByUs=false;
 var S={ speed:1, pitch:1, loop:1, sentRep:1, qa:true, qaPause:3,
-        voiceDe:"", voiceKo:"", voiceDeSet:false, voiceKoSet:false };
+        voiceDe:"", voiceKo:"", voiceDeSet:false, voiceKoSet:false,
+        engine:"ios", nVoiceDe:"de_DE-thorsten-medium" };
 
 function lsGet(k,f){ try{ var v=localStorage.getItem(k); return v?JSON.parse(v):f; }catch(e){ return f; } }
 function lsSet(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
@@ -670,10 +712,17 @@ function segment(id,items,active,cb){
   });
 }
 function buildSegments(){
+  segment("segEngine",[{v:"ios",label:t("eng.ios")},{v:"neural",label:t("eng.neural")}],
+    S.engine,function(v){
+      S.engine=v; lsSet(K_SET,S);
+      applyEngineUI();
+      if(playing){ restartCurrent(); }
+    });
   segment("segSpeed",[{v:0.7,label:"0.7×"},{v:0.85,label:"0.85×"},{v:1,label:"1×"},
                       {v:1.25,label:"1.25×"},{v:1.5,label:"1.5×"}],S.speed,function(v){
     S.speed=parseFloat(v); lsSet(K_SET,S);
-    if(playing){ restartCurrent(); }
+    if(neural()){ if(AU) AU.playbackRate=S.speed; }
+    else if(playing){ restartCurrent(); }
   });
   segment("segPitch",[{v:0.85,label:"▼▼"},{v:0.95,label:"▼"},{v:1,label:"1.0"},{v:1.1,label:"▲"}],
     S.pitch,function(v){ S.pitch=parseFloat(v); lsSet(K_SET,S); if(playing) restartCurrent(); });
@@ -714,6 +763,172 @@ function setSleep(min){
   toast(t("t.sleepSet",min));
 }
 
+/* ===================== neural voice (Piper, runs on the phone) =====================
+   iOS Safari never hands Premium system voices to the Web Speech API, so the only
+   way to get a natural German voice in a web app is to synthesise it ourselves.
+   Piper models run in WASM on the device; the result is a normal <audio> element,
+   which iOS is happy to keep playing with the screen off. */
+var PIPER_URL="https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.5/+esm";
+var TJS_URL="https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.2/+esm";
+var N_VOICES=[
+  {v:"de_DE-thorsten-medium",mb:60},
+  {v:"de_DE-thorsten-high",mb:109},
+  {v:"de_DE-kerstin-low",mb:60},
+  {v:"de_DE-ramona-low",mb:60},
+  {v:"de_DE-eva_k-x_low",mb:20}
+];
+var piperMod=null, koPipe=null, koFailed=false, koToasted=false;
+var AU=null, curChunk=null, gen=0, synthBusy=false;
+var cacheMap={}, cacheOrder=[];
+
+function neural(){ return S.engine==="neural"; }
+function piperLib(){
+  if(piperMod) return Promise.resolve(piperMod);
+  return import(PIPER_URL).then(function(m){ piperMod=m; return m; });
+}
+function wavBlob(f32,rate){
+  var n=f32.length, buf=new ArrayBuffer(44+n*2), dv=new DataView(buf);
+  function w(o,str){ for(var i=0;i<str.length;i++) dv.setUint8(o+i,str.charCodeAt(i)); }
+  w(0,"RIFF"); dv.setUint32(4,36+n*2,true); w(8,"WAVE"); w(12,"fmt ");
+  dv.setUint32(16,16,true); dv.setUint16(20,1,true); dv.setUint16(22,1,true);
+  dv.setUint32(24,rate,true); dv.setUint32(28,rate*2,true);
+  dv.setUint16(32,2,true); dv.setUint16(34,16,true);
+  w(36,"data"); dv.setUint32(40,n*2,true);
+  for(var i=0;i<n;i++){ var x=Math.max(-1,Math.min(1,f32[i]));
+    dv.setInt16(44+i*2,x<0?x*32768:x*32767,true); }
+  return new Blob([buf],{type:"audio/wav"});
+}
+/* Piper has no Korean voice, so Korean falls back to Meta's MMS model.
+   If that cannot load either, the chunk is read by the device voice. */
+function koSynth(text){
+  if(koFailed) return Promise.reject(new Error("ko"));
+  var p=koPipe?Promise.resolve(koPipe):import(TJS_URL).then(function(m){
+    return m.pipeline("text-to-speech","Xenova/mms-tts-kor",{dtype:"q8"});
+  }).then(function(pp){ koPipe=pp; return pp; });
+  return p.then(function(pp){ return pp(text); }).then(function(o){
+    return wavBlob(o.audio,o.sampling_rate);
+  }).catch(function(e){ koFailed=true; throw e; });
+}
+function nSynth(text,lang){
+  if(lang==="ko") return koSynth(text);
+  return piperLib().then(function(m){ return m.predict({text:text,voiceId:S.nVoiceDe}); });
+}
+function ckey(c){ return (c.lang||"de")+"|"+S.nVoiceDe+"|"+c.text; }
+function cachePut(k,url){
+  cacheMap[k]=url; cacheOrder.push(k);
+  while(cacheOrder.length>14){
+    var old=cacheOrder.shift();
+    if(cacheMap[old]&&old!==k){ try{ URL.revokeObjectURL(cacheMap[old]); }catch(e){} delete cacheMap[old]; }
+  }
+}
+function nAudio(c){
+  var k=ckey(c);
+  if(cacheMap[k]) return Promise.resolve(cacheMap[k]);
+  return nSynth(c.text,c.lang).then(function(blob){
+    var url=URL.createObjectURL(blob); cachePut(k,url); return url;
+  });
+}
+function ensureAudio(){
+  if(AU) return AU;
+  AU=document.getElementById("player");
+  AU.setAttribute("playsinline","");
+  AU.onended=function(){
+    if(!playing||!neural()) return;
+    var c=curChunk;
+    setTimeout(afterChunk,(S.qa&&c&&c.qEnd)?S.qaPause*1000:0);
+  };
+  AU.onerror=function(){ if(playing&&neural()) setTimeout(afterChunk,200); };
+  return AU;
+}
+function setBusy(on){ synthBusy=on; updateDockNow(); }
+function prefetchNext(){
+  if(!neural()) return;
+  var n=idx<endIndex()?idx+1:startIndex();
+  var c=chunks[n];
+  if(!c||cacheMap[ckey(c)]) return;
+  nAudio(c).catch(function(){});
+}
+function speakNeural(c){
+  var my=++gen;
+  curChunk=c;
+  setBusy(true);
+  nAudio(c).then(function(url){
+    if(!playing||my!==gen) return;
+    setBusy(false);
+    var a=ensureAudio();
+    a.src=url; a.playbackRate=S.speed;
+    var pr=a.play(); if(pr&&pr.catch) pr.catch(function(){});
+    mediaSession();
+    prefetchNext();
+  }).catch(function(){
+    if(!playing||my!==gen) return;
+    setBusy(false);
+    if(c.lang==="ko"){ if(!koToasted){ koToasted=true; toast(t("n.koFallback")); } speakIos(c); return; }
+    toast(t("n.synthErr"));
+    S.engine="ios"; lsSet(K_SET,S); buildSegments(); applyEngineUI();
+    speakIos(c);
+  });
+}
+window.pickNVoice=function(){
+  S.nVoiceDe=document.getElementById("nVoiceDe").value; lsSet(K_SET,S);
+  cacheOrder.slice().forEach(function(k){ try{ URL.revokeObjectURL(cacheMap[k]); }catch(e){} });
+  cacheMap={}; cacheOrder=[];
+  nStatus();
+};
+function fillNVoices(){
+  var sel=document.getElementById("nVoiceDe"); if(!sel) return;
+  sel.innerHTML=N_VOICES.map(function(o){
+    return '<option value="'+esc(o.v)+'">'+esc(o.v+"  ·  "+o.mb+" MB")+'</option>'; }).join("");
+  if(N_VOICES.some(function(o){ return o.v===S.nVoiceDe; })) sel.value=S.nVoiceDe;
+  else { S.nVoiceDe=N_VOICES[0].v; sel.value=S.nVoiceDe; }
+}
+function nStatus(){
+  var el=document.getElementById("nStatus"), b=document.getElementById("btnDl");
+  if(!el) return;
+  el.textContent=t("n.checking");
+  piperLib().then(function(m){ return m.stored(); }).then(function(list){
+    var have=(list||[]).indexOf(S.nVoiceDe)>=0;
+    el.textContent=have?t("n.ready"):t("n.notReady");
+    if(b) b.disabled=have;
+  }).catch(function(){
+    el.textContent=t("n.libErr");
+    if(b) b.disabled=false;
+  });
+}
+window.downloadVoice=function(){
+  var wrap=document.getElementById("dlWrap"), bar=document.getElementById("dlBar");
+  var el=document.getElementById("nStatus"), b=document.getElementById("btnDl");
+  wrap.hidden=false; bar.style.width="2%";
+  if(b) b.disabled=true;
+  el.textContent=t("n.downloading");
+  piperLib().then(function(m){
+    return m.download(S.nVoiceDe,function(pg){
+      if(pg&&pg.total) bar.style.width=Math.max(2,Math.round(pg.loaded/pg.total*100))+"%";
+    });
+  }).then(function(){
+    wrap.hidden=true; toast(t("t.voiceReady")); nStatus();
+  }).catch(function(){
+    wrap.hidden=true; if(b) b.disabled=false;
+    el.textContent=t("n.dlErr"); toast(t("n.dlErr"));
+  });
+};
+window.testNeural=function(){
+  var el=document.getElementById("nStatus");
+  el.textContent=t("n.making");
+  nSynth(t("test.de"),"de").then(function(blob){
+    var a=ensureAudio();
+    a.src=URL.createObjectURL(blob); a.playbackRate=S.speed;
+    var pr=a.play(); if(pr&&pr.catch) pr.catch(function(){});
+    nStatus();
+  }).catch(function(){ el.textContent=t("n.dlErr"); });
+};
+function applyEngineUI(){
+  var nb=document.getElementById("neuralBox"), pr=document.getElementById("pitchRow");
+  if(nb) nb.hidden=!neural();
+  if(pr) pr.hidden=neural();
+  if(neural()){ fillNVoices(); nStatus(); }
+}
+
 /* ===================== player ===================== */
 function haveTts(){ return ("speechSynthesis" in window)&&("SpeechSynthesisUtterance" in window); }
 
@@ -725,21 +940,32 @@ window.togglePlay=function(){
   if(playing) pause(); else play();
 };
 function play(){
-  if(!haveTts()) return;
+  if(!neural()&&!haveTts()) return;
   if(!voices.length) loadVoices();
   if(idx<startIndex()||idx>endIndex()) idx=startIndex();
   playing=true; pausedByUs=false;
   document.getElementById("btnPlay").textContent=t("btn.pause");
   requestWake();
-  keepAlive(true);
+  /* in neural mode the synthesised audio IS the media session — no silent track */
+  keepAlive(!neural());
   mediaSession();
   if(sentLeft<=0) sentLeft=S.sentRep;
+  /* resume mid-sentence instead of re-synthesising it */
+  if(neural()&&AU&&AU.src&&!AU.ended&&AU.currentTime>0){
+    AU.playbackRate=S.speed;
+    var pr=AU.play(); if(pr&&pr.catch) pr.catch(function(){});
+    prefetchNext();
+    return;
+  }
   speakCurrent();
 }
 function pause(){
   playing=false;
   pausedByUs=true;
+  gen++;
   try{ window.speechSynthesis.cancel(); }catch(e){}
+  if(AU){ try{ AU.pause(); }catch(e){} }
+  setBusy(false);
   document.getElementById("btnPlay").textContent=t("btn.play");
   releaseWake();
   keepAlive(false);
@@ -748,6 +974,7 @@ function pause(){
 }
 function stop(){
   pause();
+  if(AU){ try{ AU.currentTime=0; }catch(e){} }
   sentLeft=0;
 }
 window.stopAll=stop;
@@ -757,6 +984,12 @@ function speakCurrent(){
   var c=chunks[idx];
   if(!c){ finish(); return; }
   highlight();
+  if(neural()){ speakNeural(c); return; }
+  speakIos(c);
+}
+function speakIos(c){
+  if(!playing) return;
+  curChunk=c;
   var u=new SpeechSynthesisUtterance(c.text);
   var v=voiceFor(c.lang);
   if(v){ u.voice=v; u.lang=v.lang; } else { u.lang=c.lang==="ko"?"ko-KR":"de-DE"; }
@@ -788,14 +1021,18 @@ function afterChunk(){
   idx++; updateMeta(); saveProgress(); speakCurrent();
 }
 function finish(){
-  playing=false; loopDone=0;
+  playing=false; loopDone=0; gen++;
   document.getElementById("btnPlay").textContent=t("btn.play");
   try{ window.speechSynthesis.cancel(); }catch(e){}
+  if(AU){ try{ AU.pause(); AU.currentTime=0; }catch(e){} }
+  setBusy(false);
   releaseWake(); keepAlive(false); mediaSession(); saveProgress(); toast(t("t.done"));
 }
 function restartCurrent(){
   if(!playing) return;
+  gen++;
   try{ window.speechSynthesis.cancel(); }catch(e){}
+  if(neural()&&AU){ try{ AU.pause(); AU.currentTime=0; }catch(e){} }
   speakCurrent();
 }
 window.nextSent=function(){
@@ -909,6 +1146,7 @@ function updateDockNow(){
     var left=Math.max(0,Math.round((sleepEnd-Date.now())/60000));
     extra=' · <span class="sleepon">'+esc(t("sleepIn",left))+'</span>';
   }
+  if(synthBusy) s=t("n.making");
   document.getElementById("dockNow").innerHTML=esc(s)+extra;
   mediaSession();
 }
@@ -1178,6 +1416,7 @@ function applyLang(){
 
   if(!haveTts()) document.getElementById("noTts").hidden=false;
   applyLang();
+  applyEngineUI();
   loadVoices();
   if("speechSynthesis" in window){
     window.speechSynthesis.onvoiceschanged=loadVoices;
