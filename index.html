@@ -260,6 +260,8 @@
           <button class="vtest" data-i18n="btn.test" onclick="testNeural()"></button>
         </div>
         <p class="hint" id="nStatus"></p>
+        <label style="margin-top:12px" data-i18n="set.ko"></label>
+        <div class="seg" id="segKo"></div>
         <p class="hint" data-i18n-html="hint.neural"></p>
       </div>
     </div>
@@ -343,7 +345,7 @@
 (function(){
 "use strict";
 
-var APP_VER="2026-09-08a";
+var APP_VER="2026-09-08b";
 var K_LIB="ap2_library_v1", K_SET="ap2_settings_v1", K_LANG="ap2_lang";
 var PDFJS="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 var PDFJS_WORKER="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -368,13 +370,14 @@ ko:{
  "btn.refreshVoice":"🔄 목소리 목록 새로고침",
  "set.engine":"음성 엔진","eng.ios":"기기 음성","eng.neural":"신경망 음성",
  "set.nvoice":"독일어 신경망 목소리","btn.dlVoice":"⬇︎ 이 목소리 받기",
- "hint.neural":"신경망 음성은 <b>폰 안에서</b> 목소리를 만들어 냅니다. 처음 한 번만 받아두면 그 뒤로는 인터넷 없이 되고, 일반 오디오로 재생되기 때문에 <b>화면을 꺼도 계속 읽어줍니다</b>. 문장을 만드는 데 잠깐 걸리지만 다음 문장을 미리 만들어 두므로 끊기지 않습니다. 한국어는 Piper에 음성이 없어 Meta MMS 모델을 쓰고, 그것도 안 되면 기기 음성으로 읽습니다.",
+ "hint.neural":"신경망 음성은 <b>폰 안에서</b> 목소리를 만들어 냅니다. 처음 한 번만 받아두면 그 뒤로는 <b>인터넷 없이</b> 되고, 일반 오디오로 재생되기 때문에 <b>화면을 꺼도 계속 읽어줍니다</b>. 문장 만드는 데 몇 초 걸리지만 다음 문장 3개를 미리 만들어 두므로 곧 끊김이 없어집니다.<br><br>독일어 전용입니다. <b>한국어는 기기 음성(Yuna)</b>으로 읽습니다 — 이때만 화면이 꺼지면 멈추므로, 듣기만 할 때는 위에서 <b>건너뛰기</b>를 고르세요.",
  "n.checking":"확인 중…","n.ready":"✅ 이 목소리는 폰에 저장되어 있습니다","n.notReady":"아직 받지 않았습니다 — [이 목소리 받기]를 누르세요",
  "n.downloading":"받는 중… (Wi-Fi 권장, 중간에 앱을 닫지 마세요)","n.making":"🎧 목소리 만드는 중…",
  "n.dlErr":"받기에 실패했습니다. 인터넷을 확인하고 다시 시도해 주세요.",
  "n.libErr":"신경망 음성 모듈을 불러오지 못했습니다 (인터넷 확인)",
  "n.synthErr":"신경망 음성에 실패해 기기 음성으로 전환했습니다",
- "n.koFallback":"한국어 신경망 음성을 쓸 수 없어 기기 음성으로 읽습니다",
+ "n.koFallback":"한국어는 기기 음성(Yuna)으로 읽습니다 — 이 부분만 화면을 켜 두세요",
+ "set.ko":"한국어 문단","ko.read":"읽기","ko.skip":"건너뛰기",
  "t.voiceReady":"목소리 준비 완료",
  "t.voiceCount":"목소리 {0}개를 찾았습니다",
  "diag.title":"설치된 목소리 전체 보기 (진단)",
@@ -434,13 +437,14 @@ de:{
  "btn.refreshVoice":"🔄 Stimmenliste aktualisieren",
  "set.engine":"Sprach-Engine","eng.ios":"Gerätestimme","eng.neural":"Neuronale Stimme",
  "set.nvoice":"Neuronale deutsche Stimme","btn.dlVoice":"⬇︎ Diese Stimme laden",
- "hint.neural":"Die neuronale Stimme wird <b>auf dem Gerät</b> erzeugt. Einmal geladen, läuft sie ohne Internet, und weil sie als normales Audio abgespielt wird, <b>liest sie bei ausgeschaltetem Display weiter</b>. Jeder Satz braucht kurz zum Erzeugen, der nächste wird aber im Voraus vorbereitet. Für Koreanisch hat Piper keine Stimme — dort wird Metas MMS-Modell benutzt, sonst die Gerätestimme.",
+ "hint.neural":"Die neuronale Stimme entsteht <b>auf dem Gerät</b>. Einmal geladen, läuft sie <b>ohne Internet</b>, und weil sie als normales Audio abgespielt wird, <b>liest sie bei ausgeschaltetem Display weiter</b>. Ein Satz braucht ein paar Sekunden, die nächsten drei werden aber vorbereitet — danach läuft es ohne Pausen.<br><br>Nur für Deutsch. <b>Koreanisch liest die Gerätestimme (Yuna)</b>, und dabei stoppt ein ausgeschaltetes Display die Wiedergabe — zum reinen Hören oben <b>überspringen</b> wählen.",
  "n.checking":"Prüfe…","n.ready":"✅ Diese Stimme ist auf dem Gerät gespeichert","n.notReady":"Noch nicht geladen — auf [Diese Stimme laden] tippen",
  "n.downloading":"Wird geladen… (WLAN empfohlen, App offen lassen)","n.making":"🎧 Stimme wird erzeugt…",
  "n.dlErr":"Laden fehlgeschlagen. Internetverbindung prüfen und erneut versuchen.",
  "n.libErr":"Modul für neuronale Stimmen konnte nicht geladen werden (Internet prüfen)",
  "n.synthErr":"Neuronale Stimme fehlgeschlagen — zurück zur Gerätestimme",
- "n.koFallback":"Keine neuronale koreanische Stimme — es liest die Gerätestimme",
+ "n.koFallback":"Koreanisch liest die Gerätestimme (Yuna) — dafür Display an lassen",
+ "set.ko":"Koreanische Absätze","ko.read":"vorlesen","ko.skip":"überspringen",
  "t.voiceReady":"Stimme bereit",
  "t.voiceCount":"{0} Stimmen gefunden",
  "diag.title":"Alle installierten Stimmen anzeigen (Diagnose)",
@@ -495,7 +499,7 @@ var rangeA=null, rangeB=null, sentLeft=0, wake=null, sleepTimer=null, sleepEnd=0
 var voices=[], curUtt=null, pausedByUs=false;
 var S={ speed:1, pitch:1, loop:1, sentRep:1, qa:true, qaPause:3,
         voiceDe:"", voiceKo:"", voiceDeSet:false, voiceKoSet:false,
-        engine:"ios", nVoiceDe:"de_DE-thorsten-medium" };
+        engine:"ios", nVoiceDe:"de_DE-thorsten-medium", koSkip:false };
 
 function lsGet(k,f){ try{ var v=localStorage.getItem(k); return v?JSON.parse(v):f; }catch(e){ return f; } }
 function lsSet(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
@@ -718,6 +722,9 @@ function buildSegments(){
       applyEngineUI();
       if(playing){ restartCurrent(); }
     });
+  segment("segKo",[{v:0,label:t("ko.read")},{v:1,label:t("ko.skip")}],S.koSkip?1:0,function(v){
+    S.koSkip=(v==="1"); lsSet(K_SET,S);
+  });
   segment("segSpeed",[{v:0.7,label:"0.7×"},{v:0.85,label:"0.85×"},{v:1,label:"1×"},
                       {v:1.25,label:"1.25×"},{v:1.5,label:"1.5×"}],S.speed,function(v){
     S.speed=parseFloat(v); lsSet(K_SET,S);
@@ -768,16 +775,17 @@ function setSleep(min){
    way to get a natural German voice in a web app is to synthesise it ourselves.
    Piper models run in WASM on the device; the result is a normal <audio> element,
    which iOS is happy to keep playing with the screen off. */
-var PIPER_URL="https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.5/+esm";
-var TJS_URL="https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.2/+esm";
+var PIPER_URL="https://cdn.jsdelivr.net/npm/@diffusionstudio/vits-web@1.0.3/+esm";
+/* x_low models have a smaller phoneme table and crash on normal German text,
+   so only medium/high/low voices are offered here. */
 var N_VOICES=[
-  {v:"de_DE-thorsten-medium",mb:60},
-  {v:"de_DE-thorsten-high",mb:109},
-  {v:"de_DE-kerstin-low",mb:60},
-  {v:"de_DE-ramona-low",mb:60},
-  {v:"de_DE-eva_k-x_low",mb:20}
+  {v:"de_DE-thorsten-medium",mb:60,n:"Thorsten ♂"},
+  {v:"de_DE-thorsten-high",mb:109,n:"Thorsten ♂ HD"},
+  {v:"de_DE-thorsten-low",mb:60,n:"Thorsten ♂ schnell"},
+  {v:"de_DE-kerstin-low",mb:60,n:"Kerstin ♀"},
+  {v:"de_DE-ramona-low",mb:60,n:"Ramona ♀"}
 ];
-var piperMod=null, koPipe=null, koFailed=false, koToasted=false;
+var piperMod=null, koToasted=false;
 var AU=null, curChunk=null, gen=0, synthBusy=false;
 var cacheMap={}, cacheOrder=[];
 
@@ -786,31 +794,10 @@ function piperLib(){
   if(piperMod) return Promise.resolve(piperMod);
   return import(PIPER_URL).then(function(m){ piperMod=m; return m; });
 }
-function wavBlob(f32,rate){
-  var n=f32.length, buf=new ArrayBuffer(44+n*2), dv=new DataView(buf);
-  function w(o,str){ for(var i=0;i<str.length;i++) dv.setUint8(o+i,str.charCodeAt(i)); }
-  w(0,"RIFF"); dv.setUint32(4,36+n*2,true); w(8,"WAVE"); w(12,"fmt ");
-  dv.setUint32(16,16,true); dv.setUint16(20,1,true); dv.setUint16(22,1,true);
-  dv.setUint32(24,rate,true); dv.setUint32(28,rate*2,true);
-  dv.setUint16(32,2,true); dv.setUint16(34,16,true);
-  w(36,"data"); dv.setUint32(40,n*2,true);
-  for(var i=0;i<n;i++){ var x=Math.max(-1,Math.min(1,f32[i]));
-    dv.setInt16(44+i*2,x<0?x*32768:x*32767,true); }
-  return new Blob([buf],{type:"audio/wav"});
-}
-/* Piper has no Korean voice, so Korean falls back to Meta's MMS model.
-   If that cannot load either, the chunk is read by the device voice. */
-function koSynth(text){
-  if(koFailed) return Promise.reject(new Error("ko"));
-  var p=koPipe?Promise.resolve(koPipe):import(TJS_URL).then(function(m){
-    return m.pipeline("text-to-speech","Xenova/mms-tts-kor",{dtype:"q8"});
-  }).then(function(pp){ koPipe=pp; return pp; });
-  return p.then(function(pp){ return pp(text); }).then(function(o){
-    return wavBlob(o.audio,o.sampling_rate);
-  }).catch(function(e){ koFailed=true; throw e; });
-}
+/* Piper ships no Korean voice, and the neural alternatives need a romanizer
+   that does not exist in the browser — Korean lines keep the device voice. */
 function nSynth(text,lang){
-  if(lang==="ko") return koSynth(text);
+  if(lang==="ko") return Promise.reject(new Error("ko"));
   return piperLib().then(function(m){ return m.predict({text:text,voiceId:S.nVoiceDe}); });
 }
 function ckey(c){ return (c.lang||"de")+"|"+S.nVoiceDe+"|"+c.text; }
@@ -841,12 +828,21 @@ function ensureAudio(){
   return AU;
 }
 function setBusy(on){ synthBusy=on; updateDockNow(); }
+var preChain=Promise.resolve();
 function prefetchNext(){
   if(!neural()) return;
-  var n=idx<endIndex()?idx+1:startIndex();
-  var c=chunks[n];
-  if(!c||cacheMap[ckey(c)]) return;
-  nAudio(c).catch(function(){});
+  var n=idx;
+  for(var k=0;k<3;k++){
+    n=n<endIndex()?n+1:startIndex();
+    var c=chunks[n];
+    if(!c||c.lang==="ko"||cacheMap[ckey(c)]) continue;
+    (function(cc){
+      preChain=preChain.then(function(){
+        if(!playing||cacheMap[ckey(cc)]) return;
+        return nAudio(cc).catch(function(){});
+      });
+    })(c);
+  }
 }
 function speakNeural(c){
   var my=++gen;
@@ -878,7 +874,7 @@ window.pickNVoice=function(){
 function fillNVoices(){
   var sel=document.getElementById("nVoiceDe"); if(!sel) return;
   sel.innerHTML=N_VOICES.map(function(o){
-    return '<option value="'+esc(o.v)+'">'+esc(o.v+"  ·  "+o.mb+" MB")+'</option>'; }).join("");
+    return '<option value="'+esc(o.v)+'">'+esc(o.n+"  ·  "+o.mb+" MB")+'</option>'; }).join("");
   if(N_VOICES.some(function(o){ return o.v===S.nVoiceDe; })) sel.value=S.nVoiceDe;
   else { S.nVoiceDe=N_VOICES[0].v; sel.value=S.nVoiceDe; }
 }
@@ -981,11 +977,24 @@ window.stopAll=stop;
 
 function speakCurrent(){
   if(!playing) return;
+  if(skipKoActive()){
+    var g=0;
+    while(chunks[idx]&&chunks[idx].lang==="ko"&&g++<chunks.length){
+      idx=idx<endIndex()?idx+1:startIndex();
+    }
+    updateMeta();
+  }
   var c=chunks[idx];
   if(!c){ finish(); return; }
   highlight();
   if(neural()){ speakNeural(c); return; }
   speakIos(c);
+}
+/* with "skip Korean" on, jump over Korean lines — unless the whole range is Korean */
+function skipKoActive(){
+  if(!S.koSkip||!neural()) return false;
+  for(var i=startIndex();i<=endIndex();i++) if(chunks[i]&&chunks[i].lang!=="ko") return true;
+  return false;
 }
 function speakIos(c){
   if(!playing) return;
