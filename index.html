@@ -277,6 +277,10 @@
         <p class="hint" id="nStatus"></p>
         <label style="margin-top:12px" data-i18n="set.ko"></label>
         <div class="seg" id="segKo"></div>
+        <div class="row" style="margin-top:9px">
+          <div><button class="b b-ghost" data-i18n="btn.testKo" onclick="testKo()"></button></div>
+        </div>
+        <p class="hint" id="koStatus"></p>
         <p class="hint" data-i18n-html="hint.neural"></p>
       </div>
     </div>
@@ -365,7 +369,7 @@
 (function(){
 "use strict";
 
-var APP_VER="2026-09-08e";
+var APP_VER="2026-09-08f";
 var K_LIB="ap2_library_v1", K_SET="ap2_settings_v1", K_LANG="ap2_lang";
 var PDFJS="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 var PDFJS_WORKER="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -397,7 +401,11 @@ ko:{
  "n.libErr":"신경망 음성 모듈을 불러오지 못했습니다 (인터넷 확인)",
  "n.synthErr":"신경망 음성에 실패해 기기 음성으로 전환했습니다",
  "n.koFallback":"한국어는 기기 음성(Yuna)으로 읽습니다 — 이 부분만 화면을 켜 두세요",
- "set.ko":"한국어 문단","ko.read":"읽기","ko.skip":"건너뛰기",
+ "set.ko":"한국어 문단","ko.read":"읽기","ko.show":"화면만","ko.skip":"건너뛰기",
+ "btn.testKo":"🔊 한국어 음성 테스트",
+ "ko.testText":"한국어 음성 테스트입니다. 이 문장이 들리면 성공입니다.",
+ "ko.noVoice":"이 기기에 한국어 음성이 없습니다",
+ "ko.silent":"소리가 시작되지 않았습니다 (iOS가 막고 있음)",
  "n.koStuck":"한국어를 기기 음성이 읽지 못해 건너뜁니다 (iOS 제한) — 설정에서 «건너뛰기»를 켜두세요",
  "btn.useNeural":"신경망 음성으로 바꾸기",
  "upd.msg":"새 버전이 나왔습니다","upd.btn":"업데이트",
@@ -469,7 +477,11 @@ de:{
  "n.libErr":"Modul für neuronale Stimmen konnte nicht geladen werden (Internet prüfen)",
  "n.synthErr":"Neuronale Stimme fehlgeschlagen — zurück zur Gerätestimme",
  "n.koFallback":"Koreanisch liest die Gerätestimme (Yuna) — dafür Display an lassen",
- "set.ko":"Koreanische Absätze","ko.read":"vorlesen","ko.skip":"überspringen",
+ "set.ko":"Koreanische Absätze","ko.read":"vorlesen","ko.show":"nur anzeigen","ko.skip":"überspringen",
+ "btn.testKo":"🔊 Koreanische Stimme testen",
+ "ko.testText":"한국어 음성 테스트입니다. 이 문장이 들리면 성공입니다.",
+ "ko.noVoice":"Auf diesem Gerät ist keine koreanische Stimme vorhanden",
+ "ko.silent":"Es kam kein Ton (iOS blockiert)",
  "n.koStuck":"Die Gerätestimme konnte den koreanischen Satz nicht sprechen — übersprungen (iOS-Einschränkung)",
  "btn.useNeural":"Auf neuronale Stimme wechseln",
  "upd.msg":"Neue Version verfügbar","upd.btn":"Aktualisieren",
@@ -529,7 +541,7 @@ var rangeA=null, rangeB=null, sentLeft=0, wake=null, sleepTimer=null, sleepEnd=0
 var voices=[], curUtt=null, pausedByUs=false;
 var S={ speed:1, pitch:1, loop:1, sentRep:1, qa:true, qaPause:3,
         voiceDe:"", voiceKo:"", voiceDeSet:false, voiceKoSet:false,
-        engine:"ios", nVoiceDe:"de_DE-thorsten-medium", koSkip:false };
+        engine:"ios", nVoiceDe:"de_DE-thorsten-medium", koSkip:false, koMode:"" };
 
 function lsGet(k,f){ try{ var v=localStorage.getItem(k); return v?JSON.parse(v):f; }catch(e){ return f; } }
 function lsSet(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
@@ -767,8 +779,9 @@ function buildSegments(){
       applyEngineUI();
       if(playing){ restartCurrent(); }
     });
-  segment("segKo",[{v:0,label:t("ko.read")},{v:1,label:t("ko.skip")}],S.koSkip?1:0,function(v){
-    S.koSkip=(v==="1"); lsSet(K_SET,S);
+  segment("segKo",[{v:"read",label:t("ko.read")},{v:"show",label:t("ko.show")},
+                   {v:"skip",label:t("ko.skip")}],koMode(),function(v){
+    S.koMode=v; S.koSkip=(v==="skip"); lsSet(K_SET,S);
   });
   segment("segSpeed",[{v:0.7,label:"0.7×"},{v:0.85,label:"0.85×"},{v:1,label:"1×"},
                       {v:1.25,label:"1.25×"},{v:1.5,label:"1.5×"}],S.speed,function(v){
@@ -974,6 +987,31 @@ window.testNeural=function(){
     nStatus();
   }).catch(function(){ el.textContent=t("n.dlErr"); });
 };
+window.testKo=function(){
+  var el=document.getElementById("koStatus");
+  primeTts();
+  var v=voiceFor("ko");
+  if(!v){ el.textContent=t("ko.noVoice"); return; }
+  releaseAudio();
+  var log=[], started=false, done=false;
+  function show(){ el.textContent=v.name+"  ·  "+log.join(" → "); }
+  var u=new SpeechSynthesisUtterance(t("ko.testText"));
+  u.voice=v; u.lang=v.lang; u.rate=S.speed;
+  u.onstart=function(){ started=true; log.push("start"); show(); };
+  u.onend=function(){ done=true; log.push("end ✅"); show(); };
+  u.onerror=function(e){ done=true; log.push("error: "+((e&&e.error)||"?")); show(); };
+  log.push("speak()");
+  try{ window.speechSynthesis.cancel(); }catch(e){}
+  try{ window.speechSynthesis.speak(u); }catch(e){ log.push("throw: "+e.message); }
+  try{ window.speechSynthesis.resume(); }catch(e){}
+  show();
+  setTimeout(function(){
+    if(done||started) return;
+    var busy=false;
+    try{ busy=window.speechSynthesis.speaking||window.speechSynthesis.pending; }catch(e){}
+    log.push(busy?"pending…":t("ko.silent")); show();
+  },4000);
+};
 function applyEngineUI(){
   var nb=document.getElementById("neuralBox"), pr=document.getElementById("pitchRow");
   if(nb) nb.hidden=!neural();
@@ -990,8 +1028,23 @@ function haveTts(){ return ("speechSynthesis" in window)&&("SpeechSynthesisUtter
 function startIndex(){ return rangeA!=null?rangeA:0; }
 function endIndex(){ return rangeB!=null?rangeB:chunks.length-1; }
 
+/* iOS unlocks speechSynthesis only from inside a user gesture, and playing an
+   <audio> element afterwards takes the audio session away. Prime the synthesiser
+   on the very tap that starts playback, before any audio touches the session. */
+var ttsPrimed=false;
+function primeTts(){
+  if(ttsPrimed||!haveTts()) return;
+  ttsPrimed=true;
+  try{
+    var u=new SpeechSynthesisUtterance(" ");
+    u.volume=0;
+    window.speechSynthesis.speak(u);
+    window.speechSynthesis.resume();
+  }catch(e){}
+}
 window.togglePlay=function(){
   if(!chunks.length) return;
+  primeTts();
   if(playing) pause(); else play();
 };
 function play(){
@@ -1046,12 +1099,21 @@ function speakCurrent(){
   var c=chunks[idx];
   if(!c){ finish(); return; }
   highlight();
+  if(neural()&&c.lang==="ko"&&koMode()==="show"){
+    /* no neural Korean voice exists — leave it on screen long enough to read */
+    curChunk=c; setBusy(false); clearWatch();
+    var ms=Math.max(2500,Math.min(14000,c.text.length*170));
+    iosWatch=setTimeout(function(){ iosWatch=null; if(playing) afterChunk(); },ms);
+    return;
+  }
   if(neural()){ speakNeural(c); return; }
   speakIos(c);
 }
 /* with "skip Korean" on, jump over Korean lines — unless the whole range is Korean */
+/* settings written before v08f only had a skip flag */
+function koMode(){ return S.koMode||(S.koSkip?"skip":"read"); }
 function skipKoActive(){
-  if(!S.koSkip||!neural()) return false;
+  if(koMode()!=="skip"||!neural()) return false;
   for(var i=startIndex();i<=endIndex();i++) if(chunks[i]&&chunks[i].lang!=="ko") return true;
   return false;
 }
