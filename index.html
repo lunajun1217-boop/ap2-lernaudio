@@ -369,7 +369,7 @@
 (function(){
 "use strict";
 
-var APP_VER="2026-09-08f";
+var APP_VER="2026-09-08g";
 var K_LIB="ap2_library_v1", K_SET="ap2_settings_v1", K_LANG="ap2_lang";
 var PDFJS="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 var PDFJS_WORKER="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -394,7 +394,7 @@ ko:{
  "btn.refreshVoice":"🔄 목소리 목록 새로고침",
  "set.engine":"음성 엔진","eng.ios":"기기 음성","eng.neural":"신경망 음성",
  "set.nvoice":"독일어 신경망 목소리","btn.dlVoice":"⬇︎ 이 목소리 받기",
- "hint.neural":"신경망 음성은 <b>폰 안에서</b> 목소리를 만들어 냅니다. 처음 한 번만 받아두면 그 뒤로는 <b>인터넷 없이</b> 되고, 일반 오디오로 재생되기 때문에 <b>화면을 꺼도 계속 읽어줍니다</b>. 문장 만드는 데 몇 초 걸리지만 다음 문장 3개를 미리 만들어 두므로 곧 끊김이 없어집니다.<br><br>독일어 전용입니다. <b>한국어는 기기 음성(Yuna)</b>으로 읽습니다 — 이때만 화면이 꺼지면 멈추므로, 듣기만 할 때는 위에서 <b>건너뛰기</b>를 고르세요.",
+ "hint.neural":"신경망 음성은 <b>폰 안에서</b> 목소리를 만들어 냅니다. 처음 한 번만 받아두면 그 뒤로는 <b>인터넷 없이</b> 되고, 일반 오디오로 재생되기 때문에 <b>화면을 꺼도 계속 읽어줍니다</b>. 문장 만드는 데 몇 초 걸리지만 다음 문장 3개를 미리 만들어 두므로 곧 끊김이 없어집니다.<br><br>독일어 전용입니다. 독일어 문장 안의 <b>한국어 뜻풀이 괄호는 빼고</b> 읽습니다 — «Subnetz-Berechnung (서브넷 계산)» → «Subnetz-Berechnung». 한국어가 <b>주가 되는 문장</b>만 기기 음성(Yuna)으로 넘어가고, 이때 iOS가 소리를 막을 수 있으니 위에서 <b>화면만</b> 또는 <b>건너뛰기</b>를 쓰시면 됩니다.",
  "n.checking":"확인 중…","n.ready":"✅ 이 목소리는 폰에 저장되어 있습니다","n.notReady":"아직 받지 않았습니다 — [이 목소리 받기]를 누르세요",
  "n.downloading":"받는 중… (Wi-Fi 권장, 중간에 앱을 닫지 마세요)","n.making":"🎧 목소리 만드는 중…",
  "n.dlErr":"받기에 실패했습니다. 인터넷을 확인하고 다시 시도해 주세요.",
@@ -470,7 +470,7 @@ de:{
  "btn.refreshVoice":"🔄 Stimmenliste aktualisieren",
  "set.engine":"Sprach-Engine","eng.ios":"Gerätestimme","eng.neural":"Neuronale Stimme",
  "set.nvoice":"Neuronale deutsche Stimme","btn.dlVoice":"⬇︎ Diese Stimme laden",
- "hint.neural":"Die neuronale Stimme entsteht <b>auf dem Gerät</b>. Einmal geladen, läuft sie <b>ohne Internet</b>, und weil sie als normales Audio abgespielt wird, <b>liest sie bei ausgeschaltetem Display weiter</b>. Ein Satz braucht ein paar Sekunden, die nächsten drei werden aber vorbereitet — danach läuft es ohne Pausen.<br><br>Nur für Deutsch. <b>Koreanisch liest die Gerätestimme (Yuna)</b>, und dabei stoppt ein ausgeschaltetes Display die Wiedergabe — zum reinen Hören oben <b>überspringen</b> wählen.",
+ "hint.neural":"Die neuronale Stimme entsteht <b>auf dem Gerät</b>. Einmal geladen, läuft sie <b>ohne Internet</b>, und weil sie als normales Audio abgespielt wird, <b>liest sie bei ausgeschaltetem Display weiter</b>. Ein Satz braucht ein paar Sekunden, die nächsten drei werden aber vorbereitet — danach läuft es ohne Pausen.<br><br>Nur für Deutsch. In deutschen Sätzen wird eine <b>koreanische Klammer-Übersetzung weggelassen</b> — «Subnetz-Berechnung (서브넷 계산)» → «Subnetz-Berechnung». Nur überwiegend koreanische Sätze gehen an die Gerätestimme (Yuna); blockiert iOS sie, oben <b>nur anzeigen</b> oder <b>überspringen</b> wählen.",
  "n.checking":"Prüfe…","n.ready":"✅ Diese Stimme ist auf dem Gerät gespeichert","n.notReady":"Noch nicht geladen — auf [Diese Stimme laden] tippen",
  "n.downloading":"Wird geladen… (WLAN empfohlen, App offen lassen)","n.making":"🎧 Stimme wird erzeugt…",
  "n.dlErr":"Laden fehlgeschlagen. Internetverbindung prüfen und erneut versuchen.",
@@ -569,6 +569,29 @@ var Q_KO=/^\s*(문제|질문)\s*[\d.)]*\s*[:.)]?\s*/;
 var A_KO=/^\s*(정답|답변|답)\s*[\d.)]*\s*[:.)]?\s*/;
 
 function hasHangul(s){ return /[ㄱ-힝]/.test(s); }
+/* A German sentence with a Korean gloss — "Subnetz-Berechnung (서브넷 계산)" —
+   is a GERMAN sentence. Decide by which script carries the sentence, not by
+   whether a single Hangul character appears somewhere in it. */
+function langOf(s){
+  var ko=(s.match(/[ㄱ-힝]/g)||[]).length;
+  if(!ko) return "de";
+  var la=(s.match(/[A-Za-zÀ-ÖØ-öø-ÿ]/g)||[]).length;
+  if(!la) return "ko";
+  return ko/(ko+la)>=0.5?"ko":"de";
+}
+/* what a German voice should pronounce: drop the Korean gloss and the empty
+   brackets it leaves behind, so the sentence still reads cleanly */
+function stripKo(s){
+  /* a bracketed gloss that contains Hangul goes away whole, brackets and all */
+  return s.replace(/[（(\[][^()（）\[\]]*[ㄱ-힝][^()（）\[\]]*[)）\]]/g," ")
+          .replace(/[ㄱ-힝]+/g," ")
+          .replace(/[（(]\s*([,·/–—-]\s*)*[)）]/g,"")
+          .replace(/\[\s*([,·/–—-]\s*)*\]/g,"")
+          .replace(/\s{2,}/g," ")
+          .replace(/\s+([,.;:!?)\]）])/g,"$1")
+          .replace(/([(\[（])\s+/g,"$1")
+          .trim();
+}
 
 function splitSentences(line){
   var s=protect(line);
@@ -619,7 +642,12 @@ function buildChunks(text){
     if(t2!=="t") type=t2;
     if(!stripped.trim()) return;
     splitSentences(stripped).forEach(function(sen,i){
-      res.push({ text:sen, type:type, lang:hasHangul(sen)?"ko":"de", para:(newPara&&i===0) });
+      var lg=langOf(sen), o={ text:sen, type:type, lang:lg, para:(newPara&&i===0) };
+      if(lg==="de"&&hasHangul(sen)){
+        var only=stripKo(sen);
+        if(only&&only!==sen) o.deText=only;
+      }
+      res.push(o);
     });
     newPara=false;
   });
@@ -858,7 +886,8 @@ function nSynth(text,lang){
   if(lang==="ko") return Promise.reject(new Error("ko"));
   return piperLib().then(function(m){ return m.predict({text:text,voiceId:S.nVoiceDe}); });
 }
-function ckey(c){ return (c.lang||"de")+"|"+S.nVoiceDe+"|"+c.text; }
+function sayText(c){ return c.deText||c.text; }
+function ckey(c){ return (c.lang||"de")+"|"+S.nVoiceDe+"|"+sayText(c); }
 function cachePut(k,url){
   cacheMap[k]=url; cacheOrder.push(k);
   while(cacheOrder.length>14){
@@ -869,7 +898,7 @@ function cachePut(k,url){
 function nAudio(c){
   var k=ckey(c);
   if(cacheMap[k]) return Promise.resolve(cacheMap[k]);
-  return nSynth(c.text,c.lang).then(function(blob){
+  return nSynth(sayText(c),c.lang).then(function(blob){
     var url=URL.createObjectURL(blob); cachePut(k,url); return url;
   });
 }
