@@ -369,7 +369,7 @@
 (function(){
 "use strict";
 
-var APP_VER="2026-09-09b";
+var APP_VER="2026-09-09c";
 var K_LIB="ap2_library_v1", K_SET="ap2_settings_v1", K_LANG="ap2_lang";
 var PDFJS="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 var PDFJS_WORKER="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -413,6 +413,7 @@ ko:{
  "upd.msg":"새 버전이 나왔습니다","upd.btn":"업데이트",
  "warn.ios":"이 폰에서 Safari가 웹앱에 넘겨주는 독일어 음성은 <b>기본 음성(Anna)뿐</b>입니다. 설정에서 Premium 음성을 받아도 여기엔 나타나지 않습니다 — 애플의 제한이라 앱에서 우회할 수 없습니다.<br><br>대신 <b>신경망 음성</b>을 쓰면 훨씬 자연스럽고, <b>화면을 꺼도 계속 읽어줍니다.</b> 목소리를 한 번만 받아두면 인터넷 없이도 됩니다.",
  "t.voiceReady":"목소리 준비 완료",
+ "t.resume":"멈춘 곳에서 이어집니다 — ▶ 를 누르세요",
  "t.voiceCount":"목소리 {0}개를 찾았습니다",
  "diag.title":"설치된 목소리 전체 보기 (진단)",
  "diag.note":"새 음성을 설치했는데 위 목록에 안 나오면 <b>목록 새로고침</b>을 누르세요. iPhone은 앱을 완전히 껐다 켜야 나오는 경우도 있습니다. 아래는 브라우저가 실제로 넘겨주는 목록입니다 — <b>premium / enhanced</b> 가 들어간 줄이 고품질 음성입니다.",
@@ -491,6 +492,7 @@ de:{
  "upd.msg":"Neue Version verfügbar","upd.btn":"Aktualisieren",
  "warn.ios":"Safari gibt auf diesem Gerät nur die <b>Standard-Stimme (Anna)</b> für Deutsch an Web-Apps weiter. In den Einstellungen geladene Premium-Stimmen erscheinen hier nicht — eine Einschränkung von Apple, die sich in der App nicht umgehen lässt.<br><br>Die <b>neuronale Stimme</b> klingt deutlich natürlicher und <b>liest bei ausgeschaltetem Display weiter.</b> Einmal geladen, funktioniert sie ohne Internet.",
  "t.voiceReady":"Stimme bereit",
+ "t.resume":"Weiter an der Stelle von vorhin — auf ▶ tippen",
  "t.voiceCount":"{0} Stimmen gefunden",
  "diag.title":"Alle installierten Stimmen anzeigen (Diagnose)",
  "diag.note":"Wenn eine neu geladene Stimme oben fehlt, auf <b>Stimmenliste aktualisieren</b> tippen. Am iPhone hilft es oft, die App einmal komplett zu schließen. Unten steht, was der Browser tatsächlich liefert — Zeilen mit <b>premium / enhanced</b> sind die hochwertigen Stimmen.",
@@ -866,6 +868,8 @@ function setSleep(min){
    Piper models run in WASM on the device; the result is a normal <audio> element,
    which iOS is happy to keep playing with the screen off. */
 var PIPER_URL="https://cdn.jsdelivr.net/npm/@diffusionstudio/vits-web@1.0.3/+esm";
+var TTS_URL="https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.5/+esm";
+var PIPER_WASM="https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize";
 /* x_low models have a smaller phoneme table and crash on normal German text,
    so only medium/high/low voices are offered here. */
 var N_VOICES=[
@@ -884,11 +888,42 @@ function piperLib(){
   if(piperMod) return Promise.resolve(piperMod);
   return import(PIPER_URL).then(function(m){ piperMod=m; return m; });
 }
+/* vits-web's predict() rebuilds a whole 60 MB inference session for EVERY
+   sentence — on an iPhone that exhausts memory after a few minutes and Safari
+   reloads the page mid-playback. TtsSession keeps one session alive instead. */
+var ttsMod=null, ttsSess=null, ttsVoice=null, ortBase=null, ttsBroken=false;
+function ttsLib(){
+  if(ttsMod) return Promise.resolve(ttsMod);
+  /* the wasm files must match the exact onnxruntime build the ESM bundle pulls,
+     so read that version out of the bundle instead of hard-coding it */
+  return fetch(TTS_URL).then(function(r){ return r.ok?r.text():""; })
+    .catch(function(){ return ""; })
+    .then(function(src){
+      var m=/onnxruntime-web@([\d.]+)/.exec(src||"");
+      ortBase="https://cdn.jsdelivr.net/npm/onnxruntime-web@"+(m?m[1]:"1.27.0")+"/dist/";
+      return import(TTS_URL);
+    }).then(function(mod){ ttsMod=mod; return mod; });
+}
+function ttsSession(){
+  if(ttsSess&&ttsVoice===S.nVoiceDe) return Promise.resolve(ttsSess);
+  ttsSess=null;
+  return ttsLib().then(function(m){
+    return m.TtsSession.create({ voiceId:S.nVoiceDe, wasmPaths:{
+      onnxWasm:ortBase, piperData:PIPER_WASM+".data", piperWasm:PIPER_WASM+".wasm" } });
+  }).then(function(se){ ttsSess=se; ttsVoice=S.nVoiceDe; return se; });
+}
+function dropSession(){ ttsSess=null; ttsVoice=null; }
 /* Piper ships no Korean voice, and the neural alternatives need a romanizer
    that does not exist in the browser — Korean lines keep the device voice. */
 function nSynth(text,lang){
   if(lang==="ko") return Promise.reject(new Error("ko"));
-  return piperLib().then(function(m){ return m.predict({text:text,voiceId:S.nVoiceDe}); });
+  if(ttsBroken) return piperLib().then(function(m){ return m.predict({text:text,voiceId:S.nVoiceDe}); });
+  return ttsSession().then(function(se){ return se.predict(text); })
+    .catch(function(e){
+      if(ttsBroken) throw e;
+      ttsBroken=true; dropSession();
+      return piperLib().then(function(m){ return m.predict({text:text,voiceId:S.nVoiceDe}); });
+    });
 }
 function sayText(c){ return c.deText||c.text; }
 function ckey(c){ return (c.lang||"de")+"|"+S.nVoiceDe+"|"+sayText(c); }
@@ -1007,6 +1042,7 @@ function speakNeural(c){
 }
 window.pickNVoice=function(){
   S.nVoiceDe=document.getElementById("nVoiceDe").value; lsSet(K_SET,S);
+  dropSession();
   cacheOrder.slice().forEach(function(k){ try{ URL.revokeObjectURL(cacheMap[k]); }catch(e){} });
   cacheMap={}; cacheOrder=[];
   nStatus();
@@ -1391,7 +1427,13 @@ window.setRange=function(which){
 window.clearRange=function(){ rangeA=null; rangeB=null; loopDone=0; highlight(); toast(t("t.rangeOff")); saveProgress(); };
 
 /* ===================== library ===================== */
+var K_SESS="ap2_session_v1";
+function markSession(){
+  if(!cur) return;
+  try{ localStorage.setItem(K_SESS,JSON.stringify({id:cur.id,idx:idx,playing:playing,ts:Date.now()})); }catch(e){}
+}
 function saveProgress(){
+  markSession();
   if(!cur) return;
   cur.lastIdx=idx; cur.rangeA=rangeA; cur.rangeB=rangeB; cur.opened=Date.now();
   var i=lib.map(function(x){ return x.id; }).indexOf(cur.id);
@@ -1678,9 +1720,22 @@ window.doUpdate=function(){
     setTimeout(loadVoices,4000);
     setTimeout(loadVoices,8000);
   }
-  if(lib.length) showLib(); else showInput();
+  /* iOS can reload the page under memory pressure — pick the reading back up
+     where it stopped instead of dumping the user in the library */
+  var last=null;
+  try{ last=JSON.parse(localStorage.getItem(K_SESS)||"null"); }catch(e){}
+  if(last&&last.id&&Date.now()-(last.ts||0)<3600000&&
+     lib.some(function(x){ return x.id===last.id; })){
+    openText(last.id);
+    if(typeof last.idx==="number"&&last.idx<chunks.length){
+      idx=last.idx; updateMeta(); highlight();
+    }
+    if(last.playing) toast(t("t.resume"));
+  }
+  else if(lib.length) showLib(); else showInput();
 
   checkUpdate();
+  window.addEventListener("pageshow",function(){ markSession(); });
   document.addEventListener("visibilitychange",function(){
     if(!document.hidden) checkUpdate();
     /* coming back after the OS suspended us: pick the reading up again */
