@@ -127,6 +127,10 @@
   .guide summary{color:var(--accent);padding:9px 0}
   .guide p{font-size:12.5px;line-height:1.65;color:var(--muted);margin:9px 0 0}
   .guide b{color:var(--text)}
+  .warnbox{background:var(--field);border:1px solid var(--accent);border-radius:13px;
+    padding:12px;margin-top:12px}
+  .warnbox p{font-size:12.5px;line-height:1.65;color:var(--text);margin:0 0 11px}
+  .warnbox b{font-weight:800}
   .vdiag{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;line-height:1.5;
     white-space:pre-wrap;word-break:break-all;color:var(--muted);background:var(--card);
     border-radius:9px;padding:9px;margin:7px 0 0;max-height:230px;overflow:auto;
@@ -283,6 +287,11 @@
       <button class="b b-ghost" style="margin-top:11px" data-i18n="btn.refreshVoice" onclick="refreshVoices()"></button>
       <p class="hint" data-i18n-html="hint.voice"></p>
 
+      <div class="warnbox" id="iosWarn" hidden>
+        <p data-i18n-html="warn.ios"></p>
+        <button class="b b-acc" data-i18n="btn.useNeural" onclick="useNeural()"></button>
+      </div>
+
       <details class="guide">
         <summary data-i18n="diag.title"></summary>
         <p data-i18n-html="diag.note"></p>
@@ -345,7 +354,7 @@
 (function(){
 "use strict";
 
-var APP_VER="2026-09-08b";
+var APP_VER="2026-09-08c";
 var K_LIB="ap2_library_v1", K_SET="ap2_settings_v1", K_LANG="ap2_lang";
 var PDFJS="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 var PDFJS_WORKER="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -365,7 +374,7 @@ ko:{
  "set.sentRep":"문장별 반복","set.range":"구간 반복 (A → B)",
  "set.qa":"문제-정답 모드","set.qapause":"질문 뒤 멈춤",
  "set.voiceDe":"독일어 목소리","set.voiceKo":"한국어 목소리","set.pitch":"목소리 높이",
- "hint.voice":"목소리는 폰에 설치된 것만 나옵니다. iPhone은 같은 이름(Helena 등)으로 기본·Premium 두 개가 함께 뜨므로, 이름 뒤의 <b>Premium</b> 표시를 보고 고르세요.",
+ "hint.voice":"여기에는 <b>브라우저가 웹앱에 넘겨주는 음성만</b> 나옵니다. iPhone은 설정에서 받은 Premium·고품질 음성을 Safari에 공개하지 않기 때문에, 아무리 받아도 이 목록은 Anna·Yuna 같은 기본 음성 그대로입니다.",
  "v.good":"고품질","v.basic":"기본",
  "btn.refreshVoice":"🔄 목소리 목록 새로고침",
  "set.engine":"음성 엔진","eng.ios":"기기 음성","eng.neural":"신경망 음성",
@@ -378,16 +387,18 @@ ko:{
  "n.synthErr":"신경망 음성에 실패해 기기 음성으로 전환했습니다",
  "n.koFallback":"한국어는 기기 음성(Yuna)으로 읽습니다 — 이 부분만 화면을 켜 두세요",
  "set.ko":"한국어 문단","ko.read":"읽기","ko.skip":"건너뛰기",
+ "btn.useNeural":"신경망 음성으로 바꾸기",
+ "warn.ios":"이 폰에서 Safari가 웹앱에 넘겨주는 독일어 음성은 <b>기본 음성(Anna)뿐</b>입니다. 설정에서 Premium 음성을 받아도 여기엔 나타나지 않습니다 — 애플의 제한이라 앱에서 우회할 수 없습니다.<br><br>대신 <b>신경망 음성</b>을 쓰면 훨씬 자연스럽고, <b>화면을 꺼도 계속 읽어줍니다.</b> 목소리를 한 번만 받아두면 인터넷 없이도 됩니다.",
  "t.voiceReady":"목소리 준비 완료",
  "t.voiceCount":"목소리 {0}개를 찾았습니다",
  "diag.title":"설치된 목소리 전체 보기 (진단)",
  "diag.note":"새 음성을 설치했는데 위 목록에 안 나오면 <b>목록 새로고침</b>을 누르세요. iPhone은 앱을 완전히 껐다 켜야 나오는 경우도 있습니다. 아래는 브라우저가 실제로 넘겨주는 목록입니다 — <b>premium / enhanced</b> 가 들어간 줄이 고품질 음성입니다.",
  "btn.test":"들어보기","test.de":"Guten Tag. Dies ist eine Beispielstimme für die Prüfungsvorbereitung.",
  "test.ko":"안녕하세요. 이 목소리로 읽어드립니다.",
- "guide.title":"목소리가 로봇 같으면 (설치 안내)",
- "guide.ios":"<b>iPhone · iPad</b><br>설정 → <b>손쉬운 사용</b> → <b>음성 콘텐츠</b> → <b>음성</b> → <b>Deutsch</b> 를 선택하고, 이름 옆에 <b>Premium</b> 또는 <b>고품질</b> 이라고 적힌 음성을 받으세요. (Anna, Helena, Markus 등) 용량이 100MB 정도라 Wi-Fi에서 받는 게 좋습니다. 받은 뒤 이 앱을 완전히 껐다 켜면 목록에 나타납니다.",
+ "guide.title":"목소리가 로봇 같을 때",
+ "guide.ios":"<b>iPhone · iPad</b><br>설정 → 손쉬운 사용 → 음성 콘텐츠에서 Premium 음성을 받아도 <b>Safari·웹앱에는 나타나지 않습니다.</b> 그 음성은 VoiceOver·화면 읽어주기 등 애플 자체 기능 전용이고, 웹에는 기본(compact) 음성만 공개됩니다. 애플의 제한이라 앱에서 우회할 방법이 없습니다 — 아이폰에서 자연스러운 독일어를 들으려면 <b>신경망 음성</b>을 쓰세요.",
  "guide.android":"<b>Android</b><br>설정 → 접근성 → 텍스트 음성 변환 → <b>Google 음성 인식기</b> → 언어 데이터 설치 → Deutsch.",
- "guide.pick":"설치한 뒤 위 목록에서 <b>고품질</b> 표시가 붙은 음성을 고르고 <b>들어보기</b>로 비교해 보세요. 앱이 자동으로 가장 좋은 음성을 먼저 고릅니다.",
+ "guide.pick":"Android에서는 설치한 음성이 위 목록에 <b>★ 고품질</b> 표시와 함께 나타납니다. 그럴 때는 그걸 고르고 <b>들어보기</b>로 비교해 보세요 — 앱이 자동으로 가장 좋은 것을 먼저 고릅니다.",
  "guide.tip":"속도를 <b>0.85배</b>로 낮추면 훨씬 사람처럼 들립니다. 목소리 높이도 조금 낮추면 부드러워집니다.",
  "t.noVoiceLang":"이 언어의 음성이 설치되어 있지 않습니다",
  "bg.title":"화면을 끄면 멈추는 이유",
@@ -416,7 +427,8 @@ ko:{
  "t.noVoice":"독일어 음성이 설치되어 있지 않습니다 · 설정에서 추가해 주세요",
  "t.backup":"백업 파일을 내려받았습니다","t.restored":"{0}개를 복원했습니다","t.badFile":"파일을 읽을 수 없습니다",
  "c.delText":"\"{0}\"\n\n보관함에서 삭제할까요?",
- "foot.note":"텍스트는 이 기기(브라우저) 안에만 저장됩니다.<br>Safari/Chrome에서 <b>홈 화면에 추가</b>하면 앱처럼 쓸 수 있습니다.<br>화면을 끄면 iPhone에서는 읽기가 멈춥니다. 화면을 켜 둔 채로 두세요.",
+ "foot.note":"텍스트는 이 기기(브라우저) 안에만 저장됩니다.<br>Safari/Chrome에서 <b>홈 화면에 추가</b>하면 앱처럼 쓸 수 있습니다.<br>기기 음성은 화면을 끄면 iPhone에서 멈춥니다 — 화면을 켜 두거나 <b>신경망 음성</b>을 쓰세요.",
+ "foot.neural":"텍스트는 이 기기(브라우저) 안에만 저장됩니다.<br>Safari/Chrome에서 <b>홈 화면에 추가</b>하면 앱처럼 쓸 수 있습니다.<br>신경망 음성이라 <b>화면을 꺼도 계속 재생됩니다</b> (한국어 문단은 제외).",
  "ver.label":"앱 버전"
 },
 de:{
@@ -432,7 +444,7 @@ de:{
  "set.sentRep":"Satz wiederholen","set.range":"Abschnitt A → B",
  "set.qa":"Frage-Antwort-Modus","set.qapause":"Pause nach der Frage",
  "set.voiceDe":"Deutsche Stimme","set.voiceKo":"Koreanische Stimme","set.pitch":"Stimmlage",
- "hint.voice":"Es erscheinen nur installierte Stimmen. Am iPhone steht derselbe Name (z. B. Helena) doppelt in der Liste — achte auf den Zusatz <b>Premium</b>.",
+ "hint.voice":"Hier stehen nur die Stimmen, die der Browser an Web-Apps <b>weitergibt</b>. Das iPhone gibt in den Einstellungen geladene Premium-Stimmen nicht an Safari weiter — die Liste bleibt deshalb bei Standardstimmen wie Anna und Yuna.",
  "v.good":"hochwertig","v.basic":"Standard",
  "btn.refreshVoice":"🔄 Stimmenliste aktualisieren",
  "set.engine":"Sprach-Engine","eng.ios":"Gerätestimme","eng.neural":"Neuronale Stimme",
@@ -445,16 +457,18 @@ de:{
  "n.synthErr":"Neuronale Stimme fehlgeschlagen — zurück zur Gerätestimme",
  "n.koFallback":"Koreanisch liest die Gerätestimme (Yuna) — dafür Display an lassen",
  "set.ko":"Koreanische Absätze","ko.read":"vorlesen","ko.skip":"überspringen",
+ "btn.useNeural":"Auf neuronale Stimme wechseln",
+ "warn.ios":"Safari gibt auf diesem Gerät nur die <b>Standard-Stimme (Anna)</b> für Deutsch an Web-Apps weiter. In den Einstellungen geladene Premium-Stimmen erscheinen hier nicht — eine Einschränkung von Apple, die sich in der App nicht umgehen lässt.<br><br>Die <b>neuronale Stimme</b> klingt deutlich natürlicher und <b>liest bei ausgeschaltetem Display weiter.</b> Einmal geladen, funktioniert sie ohne Internet.",
  "t.voiceReady":"Stimme bereit",
  "t.voiceCount":"{0} Stimmen gefunden",
  "diag.title":"Alle installierten Stimmen anzeigen (Diagnose)",
  "diag.note":"Wenn eine neu geladene Stimme oben fehlt, auf <b>Stimmenliste aktualisieren</b> tippen. Am iPhone hilft es oft, die App einmal komplett zu schließen. Unten steht, was der Browser tatsächlich liefert — Zeilen mit <b>premium / enhanced</b> sind die hochwertigen Stimmen.",
  "btn.test":"Anhören","test.de":"Guten Tag. Dies ist eine Beispielstimme für die Prüfungsvorbereitung.",
  "test.ko":"안녕하세요. 이 목소리로 읽어드립니다.",
- "guide.title":"Klingt die Stimme roboterhaft? (Anleitung)",
- "guide.ios":"<b>iPhone · iPad</b><br>Einstellungen → <b>Bedienungshilfen</b> → <b>Gesprochene Inhalte</b> → <b>Stimmen</b> → <b>Deutsch</b>, dann eine Stimme mit dem Zusatz <b>Premium</b> laden (z. B. Anna, Helena, Markus). Das sind rund 100 MB, am besten über WLAN. Danach die App einmal komplett schließen und neu öffnen.",
+ "guide.title":"Wenn die Stimme roboterhaft klingt",
+ "guide.ios":"<b>iPhone · iPad</b><br>Eine unter Einstellungen → Bedienungshilfen → Gesprochene Inhalte geladene Premium-Stimme <b>erscheint in Safari und Web-Apps nicht.</b> Sie ist Apples eigenen Funktionen wie VoiceOver vorbehalten; ans Web gehen nur die Standard-Stimmen (compact). Das lässt sich in der App nicht umgehen — für natürliches Deutsch am iPhone die <b>neuronale Stimme</b> verwenden.",
  "guide.android":"<b>Android</b><br>Einstellungen → Bedienungshilfen → Text-in-Sprache → <b>Google Sprachausgabe</b> → Sprachdaten installieren → Deutsch.",
- "guide.pick":"Danach oben eine Stimme mit dem Hinweis <b>hochwertig</b> wählen und mit <b>Anhören</b> vergleichen. Die App wählt automatisch die beste vorhandene Stimme vor.",
+ "guide.pick":"Unter Android tauchen installierte Stimmen oben mit dem Hinweis <b>★ hochwertig</b> auf. Dann diese wählen und mit <b>Anhören</b> vergleichen — die App schlägt automatisch die beste vorhandene vor.",
  "guide.tip":"Mit Tempo <b>0.85×</b> klingt es merklich menschlicher. Eine leicht tiefere Stimmlage wirkt ruhiger.",
  "t.noVoiceLang":"Für diese Sprache ist keine Stimme installiert",
  "bg.title":"Warum stoppt es bei ausgeschaltetem Display?",
@@ -483,7 +497,8 @@ de:{
  "t.noVoice":"Keine deutsche Stimme installiert · bitte in den Einstellungen hinzufügen",
  "t.backup":"Backup gespeichert","t.restored":"{0} Einträge wiederhergestellt","t.badFile":"Datei konnte nicht gelesen werden",
  "c.delText":"„{0}“\n\nAus der Ablage löschen?",
- "foot.note":"Texte bleiben ausschließlich auf diesem Gerät.<br>In Safari/Chrome über <b>Zum Home-Bildschirm</b> wie eine App nutzbar.<br>Auf dem iPhone stoppt die Sprachausgabe, wenn das Display ausgeht – Display anlassen.",
+ "foot.note":"Texte bleiben ausschließlich auf diesem Gerät.<br>In Safari/Chrome über <b>Zum Home-Bildschirm</b> wie eine App nutzbar.<br>Die Gerätestimme stoppt am iPhone bei ausgeschaltetem Display – Display anlassen oder die <b>neuronale Stimme</b> nutzen.",
+ "foot.neural":"Texte bleiben ausschließlich auf diesem Gerät.<br>In Safari/Chrome über <b>Zum Home-Bildschirm</b> wie eine App nutzbar.<br>Mit der neuronalen Stimme <b>läuft die Wiedergabe bei ausgeschaltetem Display weiter</b> (außer bei koreanischen Absätzen).",
  "ver.label":"App-Version"
 }};
 var lang="ko";
@@ -649,7 +664,22 @@ function fillVoiceSelects(){
     if(S[key]!==vKey(pick)){ S[key]=vKey(pick); lsSet(K_SET,S); }
   });
   renderVoiceDiag();
+  updateIosWarn();
 }
+/* iOS hands web pages only the compact voices; the Premium ones a user installs
+   in Settings are reserved for Apple's own features and never show up here. */
+function updateIosWarn(){
+  var el=document.getElementById("iosWarn"); if(!el) return;
+  var list=voicesFor("de");
+  var good=list.some(function(v){ return vScore(v)>=50; });
+  el.hidden = neural() || !list.length || good;
+}
+window.useNeural=function(){
+  S.engine="neural"; lsSet(K_SET,S);
+  buildSegments(); applyEngineUI(); updateIosWarn();
+  var b=document.getElementById("neuralBox");
+  if(b&&b.scrollIntoView) b.scrollIntoView({behavior:"smooth",block:"center"});
+};
 function renderVoiceDiag(){
   var el=document.getElementById("voiceDiag");
   if(!el) return;
@@ -923,6 +953,9 @@ function applyEngineUI(){
   if(nb) nb.hidden=!neural();
   if(pr) pr.hidden=neural();
   if(neural()){ fillNVoices(); nStatus(); }
+  updateIosWarn();
+  var fn=document.getElementById("footNote");
+  if(fn) fn.innerHTML=t(neural()?"foot.neural":"foot.note");
 }
 
 /* ===================== player ===================== */
@@ -1406,7 +1439,7 @@ function applyLang(){
   Array.prototype.forEach.call(document.querySelectorAll("[data-i18n-html]"),function(el){
     el.innerHTML=t(el.getAttribute("data-i18n-html"));
   });
-  document.getElementById("footNote").innerHTML=t("foot.note");
+  document.getElementById("footNote").innerHTML=t(neural()?"foot.neural":"foot.note");
   document.getElementById("verLine").textContent=t("ver.label")+" v"+APP_VER;
   document.getElementById("btnPlay").textContent=t(playing?"btn.pause":"btn.play");
   buildSegments();
