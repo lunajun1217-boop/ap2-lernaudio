@@ -369,7 +369,7 @@
 (function(){
 "use strict";
 
-var APP_VER="2026-09-08g";
+var APP_VER="2026-09-09b";
 var K_LIB="ap2_library_v1", K_SET="ap2_settings_v1", K_LANG="ap2_lang";
 var PDFJS="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 var PDFJS_WORKER="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -407,6 +407,8 @@ ko:{
  "ko.noVoice":"이 기기에 한국어 음성이 없습니다",
  "ko.silent":"소리가 시작되지 않았습니다 (iOS가 막고 있음)",
  "n.koStuck":"한국어를 기기 음성이 읽지 못해 건너뜁니다 (iOS 제한) — 설정에서 «건너뛰기»를 켜두세요",
+ "n.stuck":"소리가 멈춰서 다음 문장으로 넘어갑니다",
+ "n.retry":"이 문장을 만들지 못해 건너뜁니다",
  "btn.useNeural":"신경망 음성으로 바꾸기",
  "upd.msg":"새 버전이 나왔습니다","upd.btn":"업데이트",
  "warn.ios":"이 폰에서 Safari가 웹앱에 넘겨주는 독일어 음성은 <b>기본 음성(Anna)뿐</b>입니다. 설정에서 Premium 음성을 받아도 여기엔 나타나지 않습니다 — 애플의 제한이라 앱에서 우회할 수 없습니다.<br><br>대신 <b>신경망 음성</b>을 쓰면 훨씬 자연스럽고, <b>화면을 꺼도 계속 읽어줍니다.</b> 목소리를 한 번만 받아두면 인터넷 없이도 됩니다.",
@@ -483,6 +485,8 @@ de:{
  "ko.noVoice":"Auf diesem Gerät ist keine koreanische Stimme vorhanden",
  "ko.silent":"Es kam kein Ton (iOS blockiert)",
  "n.koStuck":"Die Gerätestimme konnte den koreanischen Satz nicht sprechen — übersprungen (iOS-Einschränkung)",
+ "n.stuck":"Die Wiedergabe hing — weiter mit dem nächsten Satz",
+ "n.retry":"Dieser Satz ließ sich nicht erzeugen — übersprungen",
  "btn.useNeural":"Auf neuronale Stimme wechseln",
  "upd.msg":"Neue Version verfügbar","upd.btn":"Aktualisieren",
  "warn.ios":"Safari gibt auf diesem Gerät nur die <b>Standard-Stimme (Anna)</b> für Deutsch an Web-Apps weiter. In den Einstellungen geladene Premium-Stimmen erscheinen hier nicht — eine Einschränkung von Apple, die sich in der App nicht umgehen lässt.<br><br>Die <b>neuronale Stimme</b> klingt deutlich natürlicher und <b>liest bei ausgeschaltetem Display weiter.</b> Einmal geladen, funktioniert sie ohne Internet.",
@@ -872,7 +876,7 @@ var N_VOICES=[
   {v:"de_DE-ramona-low",mb:60,n:"Ramona ♀"}
 ];
 var piperMod=null, koToasted=false;
-var AU=null, curChunk=null, gen=0, synthBusy=false, iosWatch=null;
+var AU=null, curChunk=null, gen=0, synthBusy=false, iosWatch=null, nFails=0;
 var cacheMap={}, cacheOrder=[];
 
 function neural(){ return S.engine==="neural"; }
@@ -895,10 +899,18 @@ function cachePut(k,url){
     if(cacheMap[old]&&old!==k){ try{ URL.revokeObjectURL(cacheMap[old]); }catch(e){} delete cacheMap[old]; }
   }
 }
+function withTimeout(pr,ms){
+  return new Promise(function(res,rej){
+    var done=false;
+    var to=setTimeout(function(){ if(!done){ done=true; rej(new Error("timeout")); } },ms);
+    pr.then(function(v){ if(!done){ done=true; clearTimeout(to); res(v); } },
+            function(e){ if(!done){ done=true; clearTimeout(to); rej(e); } });
+  });
+}
 function nAudio(c){
   var k=ckey(c);
   if(cacheMap[k]) return Promise.resolve(cacheMap[k]);
-  return nSynth(sayText(c),c.lang).then(function(blob){
+  return withTimeout(nSynth(sayText(c),c.lang),60000).then(function(blob){
     var url=URL.createObjectURL(blob); cachePut(k,url); return url;
   });
 }
@@ -912,9 +924,31 @@ function ensureAudio(){
     setTimeout(afterChunk,(S.qa&&c&&c.qEnd)?S.qaPause*1000:0);
   };
   AU.onerror=function(){ if(playing&&neural()) setTimeout(afterChunk,200); };
+  AU.ontimeupdate=function(){ noteProgress(); };
   return AU;
 }
 function setBusy(on){ synthBusy=on; updateDockNow(); }
+/* A single watchdog for the whole session. iOS can pause the element when it
+   loses the audio session, and a synth worker can die without rejecting —
+   either way the app used to just fall silent. */
+var beat=null, beatLast=0;
+function noteProgress(){ beatLast=Date.now(); }
+function startBeat(){ stopBeat(); noteProgress(); beat=setInterval(tick,4000); }
+function stopBeat(){ if(beat){ clearInterval(beat); beat=null; } }
+function tick(){
+  if(!playing){ stopBeat(); return; }
+  if(!neural()) return;
+  if(synthBusy){
+    if(Date.now()-beatLast>70000){ noteProgress(); setBusy(false); toast(t("n.stuck")); afterChunk(); }
+    return;
+  }
+  if(AU&&AU.src&&!AU.ended&&AU.paused){
+    keepAlive(true);
+    var pr=AU.play(); if(pr&&pr.catch) pr.catch(function(){});
+  }
+  if(AU&&!AU.paused){ noteProgress(); return; }
+  if(Date.now()-beatLast>50000){ noteProgress(); afterChunk(); }
+}
 /* iOS shares one audio session between <audio> and speechSynthesis: while the
    element still holds a source, the device voice is silently swallowed. Korean
    lines have no neural voice, so hand the session back before speaking them. */
@@ -949,6 +983,8 @@ function speakNeural(c){
     var a=ensureAudio();
     a.src=url; a.playbackRate=S.speed;
     var pr=a.play(); if(pr&&pr.catch) pr.catch(function(){});
+    nFails=0;
+    noteProgress();
     mediaSession();
     prefetchNext();
   }).catch(function(){
@@ -958,6 +994,12 @@ function speakNeural(c){
       if(!koToasted){ koToasted=true; toast(t("n.koFallback")); }
       speakIos(c); return;
     }
+    /* one hiccup should not cost the good voice for the rest of the session:
+       retry the sentence once, then skip it, and only fall back after three */
+    nFails++;
+    if(nFails===1){ speakNeural(c); return; }
+    if(nFails<3){ toast(t("n.retry")); afterChunk(); return; }
+    nFails=0;
     toast(t("n.synthErr"));
     S.engine="ios"; lsSet(K_SET,S); buildSegments(); applyEngineUI();
     speakIos(c);
@@ -1083,9 +1125,12 @@ function play(){
   playing=true; pausedByUs=false;
   document.getElementById("btnPlay").textContent=t("btn.pause");
   requestWake();
-  /* in neural mode the synthesised audio IS the media session — no silent track */
-  keepAlive(!neural());
+  /* The silent loop runs in BOTH modes: in neural mode there is a gap between
+     sentences while the next one is being synthesised, and iOS drops the audio
+     session — and suspends the page — the moment nothing is playing. */
+  keepAlive(true);
   mediaSession();
+  startBeat();
   if(sentLeft<=0) sentLeft=S.sentRep;
   /* resume mid-sentence instead of re-synthesising it */
   if(neural()&&AU&&AU.src&&!AU.ended&&AU.currentTime>0){
@@ -1099,7 +1144,7 @@ function play(){
 function pause(){
   playing=false;
   pausedByUs=true;
-  gen++; clearWatch();
+  gen++; clearWatch(); stopBeat();
   try{ window.speechSynthesis.cancel(); }catch(e){}
   if(AU){ try{ AU.pause(); }catch(e){} }
   setBusy(false);
@@ -1171,19 +1216,25 @@ function speakIos(c){
   /* known iOS/Chrome wedge: the queue needs a nudge after speak() */
   try{ window.speechSynthesis.resume(); }catch(e){}
   clearWatch();
-  iosWatch=setTimeout(function(){
-    iosWatch=null;
-    if(!playing||started) return;
-    var busy=false;
-    try{ busy=window.speechSynthesis.speaking||window.speechSynthesis.pending; }catch(e){}
-    if(busy) return;
-    /* the device voice never started — move on instead of stalling in silence */
-    toast(t("n.koStuck"));
-    afterChunk();
-  },4000);
+  var waited=false;
+  function arm(ms){
+    iosWatch=setTimeout(function(){
+      iosWatch=null;
+      if(!playing||started) return;
+      var busy=false;
+      try{ busy=window.speechSynthesis.speaking||window.speechSynthesis.pending; }catch(e){}
+      /* iOS can report "speaking" for ever once the queue wedges, so give it one
+         more window rather than trusting the flag and waiting indefinitely */
+      if(busy&&!waited){ waited=true; arm(6000); return; }
+      toast(t("n.koStuck"));
+      afterChunk();
+    },ms);
+  }
+  arm(4000);
 }
 function afterChunk(){
   if(!playing) return;
+  noteProgress();
   sentLeft--;
   if(sentLeft>0){ speakCurrent(); return; }
   sentLeft=S.sentRep;
@@ -1196,7 +1247,7 @@ function afterChunk(){
   idx++; updateMeta(); saveProgress(); speakCurrent();
 }
 function finish(){
-  playing=false; loopDone=0; gen++; clearWatch();
+  playing=false; loopDone=0; gen++; clearWatch(); stopBeat();
   document.getElementById("btnPlay").textContent=t("btn.play");
   try{ window.speechSynthesis.cancel(); }catch(e){}
   if(AU){ try{ AU.pause(); AU.currentTime=0; }catch(e){} }
