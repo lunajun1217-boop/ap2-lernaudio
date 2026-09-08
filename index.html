@@ -365,7 +365,7 @@
 (function(){
 "use strict";
 
-var APP_VER="2026-09-08d";
+var APP_VER="2026-09-08e";
 var K_LIB="ap2_library_v1", K_SET="ap2_settings_v1", K_LANG="ap2_lang";
 var PDFJS="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 var PDFJS_WORKER="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -398,6 +398,7 @@ ko:{
  "n.synthErr":"신경망 음성에 실패해 기기 음성으로 전환했습니다",
  "n.koFallback":"한국어는 기기 음성(Yuna)으로 읽습니다 — 이 부분만 화면을 켜 두세요",
  "set.ko":"한국어 문단","ko.read":"읽기","ko.skip":"건너뛰기",
+ "n.koStuck":"한국어를 기기 음성이 읽지 못해 건너뜁니다 (iOS 제한) — 설정에서 «건너뛰기»를 켜두세요",
  "btn.useNeural":"신경망 음성으로 바꾸기",
  "upd.msg":"새 버전이 나왔습니다","upd.btn":"업데이트",
  "warn.ios":"이 폰에서 Safari가 웹앱에 넘겨주는 독일어 음성은 <b>기본 음성(Anna)뿐</b>입니다. 설정에서 Premium 음성을 받아도 여기엔 나타나지 않습니다 — 애플의 제한이라 앱에서 우회할 수 없습니다.<br><br>대신 <b>신경망 음성</b>을 쓰면 훨씬 자연스럽고, <b>화면을 꺼도 계속 읽어줍니다.</b> 목소리를 한 번만 받아두면 인터넷 없이도 됩니다.",
@@ -469,6 +470,7 @@ de:{
  "n.synthErr":"Neuronale Stimme fehlgeschlagen — zurück zur Gerätestimme",
  "n.koFallback":"Koreanisch liest die Gerätestimme (Yuna) — dafür Display an lassen",
  "set.ko":"Koreanische Absätze","ko.read":"vorlesen","ko.skip":"überspringen",
+ "n.koStuck":"Die Gerätestimme konnte den koreanischen Satz nicht sprechen — übersprungen (iOS-Einschränkung)",
  "btn.useNeural":"Auf neuronale Stimme wechseln",
  "upd.msg":"Neue Version verfügbar","upd.btn":"Aktualisieren",
  "warn.ios":"Safari gibt auf diesem Gerät nur die <b>Standard-Stimme (Anna)</b> für Deutsch an Web-Apps weiter. In den Einstellungen geladene Premium-Stimmen erscheinen hier nicht — eine Einschränkung von Apple, die sich in der App nicht umgehen lässt.<br><br>Die <b>neuronale Stimme</b> klingt deutlich natürlicher und <b>liest bei ausgeschaltetem Display weiter.</b> Einmal geladen, funktioniert sie ohne Internet.",
@@ -829,7 +831,7 @@ var N_VOICES=[
   {v:"de_DE-ramona-low",mb:60,n:"Ramona ♀"}
 ];
 var piperMod=null, koToasted=false;
-var AU=null, curChunk=null, gen=0, synthBusy=false;
+var AU=null, curChunk=null, gen=0, synthBusy=false, iosWatch=null;
 var cacheMap={}, cacheOrder=[];
 
 function neural(){ return S.engine==="neural"; }
@@ -871,6 +873,14 @@ function ensureAudio(){
   return AU;
 }
 function setBusy(on){ synthBusy=on; updateDockNow(); }
+/* iOS shares one audio session between <audio> and speechSynthesis: while the
+   element still holds a source, the device voice is silently swallowed. Korean
+   lines have no neural voice, so hand the session back before speaking them. */
+function releaseAudio(){
+  if(!AU) return;
+  try{ AU.pause(); AU.removeAttribute("src"); AU.load(); }catch(e){}
+}
+function clearWatch(){ if(iosWatch){ clearTimeout(iosWatch); iosWatch=null; } }
 var preChain=Promise.resolve();
 function prefetchNext(){
   if(!neural()) return;
@@ -902,7 +912,10 @@ function speakNeural(c){
   }).catch(function(){
     if(!playing||my!==gen) return;
     setBusy(false);
-    if(c.lang==="ko"){ if(!koToasted){ koToasted=true; toast(t("n.koFallback")); } speakIos(c); return; }
+    if(c.lang==="ko"){
+      if(!koToasted){ koToasted=true; toast(t("n.koFallback")); }
+      speakIos(c); return;
+    }
     toast(t("n.synthErr"));
     S.engine="ios"; lsSet(K_SET,S); buildSegments(); applyEngineUI();
     speakIos(c);
@@ -1004,7 +1017,7 @@ function play(){
 function pause(){
   playing=false;
   pausedByUs=true;
-  gen++;
+  gen++; clearWatch();
   try{ window.speechSynthesis.cancel(); }catch(e){}
   if(AU){ try{ AU.pause(); }catch(e){} }
   setBusy(false);
@@ -1045,7 +1058,10 @@ function skipKoActive(){
 function speakIos(c){
   if(!playing) return;
   curChunk=c;
+  if(neural()) releaseAudio();
+  var started=false;
   var u=new SpeechSynthesisUtterance(c.text);
+  u.onstart=function(){ started=true; clearWatch(); };
   var v=voiceFor(c.lang);
   if(v){ u.voice=v; u.lang=v.lang; } else { u.lang=c.lang==="ko"?"ko-KR":"de-DE"; }
   u.rate=S.speed;
@@ -1061,6 +1077,19 @@ function speakIos(c){
   curUtt=u;
   try{ window.speechSynthesis.cancel(); }catch(e){}
   try{ window.speechSynthesis.speak(u); }catch(e){}
+  /* known iOS/Chrome wedge: the queue needs a nudge after speak() */
+  try{ window.speechSynthesis.resume(); }catch(e){}
+  clearWatch();
+  iosWatch=setTimeout(function(){
+    iosWatch=null;
+    if(!playing||started) return;
+    var busy=false;
+    try{ busy=window.speechSynthesis.speaking||window.speechSynthesis.pending; }catch(e){}
+    if(busy) return;
+    /* the device voice never started — move on instead of stalling in silence */
+    toast(t("n.koStuck"));
+    afterChunk();
+  },4000);
 }
 function afterChunk(){
   if(!playing) return;
@@ -1076,7 +1105,7 @@ function afterChunk(){
   idx++; updateMeta(); saveProgress(); speakCurrent();
 }
 function finish(){
-  playing=false; loopDone=0; gen++;
+  playing=false; loopDone=0; gen++; clearWatch();
   document.getElementById("btnPlay").textContent=t("btn.play");
   try{ window.speechSynthesis.cancel(); }catch(e){}
   if(AU){ try{ AU.pause(); AU.currentTime=0; }catch(e){} }
@@ -1085,7 +1114,7 @@ function finish(){
 }
 function restartCurrent(){
   if(!playing) return;
-  gen++;
+  gen++; clearWatch();
   try{ window.speechSynthesis.cancel(); }catch(e){}
   if(neural()&&AU){ try{ AU.pause(); AU.currentTime=0; }catch(e){} }
   speakCurrent();
