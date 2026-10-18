@@ -369,7 +369,7 @@
 (function(){
 "use strict";
 
-var APP_VER="2026-09-09c";
+var APP_VER="2026-10-18a";
 var K_LIB="ap2_library_v1", K_SET="ap2_settings_v1", K_LANG="ap2_lang";
 var PDFJS="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 var PDFJS_WORKER="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -401,6 +401,9 @@ ko:{
  "n.libErr":"신경망 음성 모듈을 불러오지 못했습니다 (인터넷 확인)",
  "n.synthErr":"신경망 음성에 실패해 기기 음성으로 전환했습니다",
  "n.koFallback":"한국어는 기기 음성(Yuna)으로 읽습니다 — 이 부분만 화면을 켜 두세요",
+ "n.engineGone":"신경망 음성을 시작하지 못해 기기 음성으로 바꿨습니다 · 설정에 원인이 적혀 있습니다",
+ "n.engineErr":"엔진 오류: {0}",
+ "n.engineOk":"✅ 엔진 준비됨 ({0})",
  "set.ko":"한국어 문단","ko.read":"읽기","ko.show":"화면만","ko.skip":"건너뛰기",
  "btn.testKo":"🔊 한국어 음성 테스트",
  "ko.testText":"한국어 음성 테스트입니다. 이 문장이 들리면 성공입니다.",
@@ -480,6 +483,9 @@ de:{
  "n.libErr":"Modul für neuronale Stimmen konnte nicht geladen werden (Internet prüfen)",
  "n.synthErr":"Neuronale Stimme fehlgeschlagen — zurück zur Gerätestimme",
  "n.koFallback":"Koreanisch liest die Gerätestimme (Yuna) — dafür Display an lassen",
+ "n.engineGone":"Neuronale Stimme ließ sich nicht starten — zurück zur Gerätestimme; Grund steht in den Einstellungen",
+ "n.engineErr":"Engine-Fehler: {0}",
+ "n.engineOk":"✅ Engine bereit ({0})",
  "set.ko":"Koreanische Absätze","ko.read":"vorlesen","ko.show":"nur anzeigen","ko.skip":"überspringen",
  "btn.testKo":"🔊 Koreanische Stimme testen",
  "ko.testText":"한국어 음성 테스트입니다. 이 문장이 들리면 성공입니다.",
@@ -891,16 +897,26 @@ function piperLib(){
 /* vits-web's predict() rebuilds a whole 60 MB inference session for EVERY
    sentence — on an iPhone that exhausts memory after a few minutes and Safari
    reloads the page mid-playback. TtsSession keeps one session alive instead. */
-var ttsMod=null, ttsSess=null, ttsVoice=null, ortBase=null, ttsBroken=false;
+var ttsMod=null, ttsSess=null, ttsVoice=null, ttsVers=null, ttsBroken=false;
+var nErr="", ortUsed="";
+/* piper-tts-web depends on onnxruntime-web with a CARET range, and jsDelivr
+   re-resolves that range every time it rebuilds the bundle — so the same
+   pinned URL quietly changed runtime under us (1.27 now; it was not before),
+   and 1.27 dropped wasm variants the older one shipped. Pinning one version
+   here would only move the next breakage, so collect the candidates and try
+   them: whatever jsDelivr resolves next, one of these layouts fits. */
+function ortCandidates(src){
+  var seen={}, out=[], re=/onnxruntime-web[@\/]([\d]+\.[\d]+\.[\d]+)/g, m;
+  while((m=re.exec(src||""))) if(!seen[m[1]]){ seen[m[1]]=1; out.push(m[1]); }
+  ["1.27.0","1.18.0"].forEach(function(v){ if(!seen[v]){ seen[v]=1; out.push(v); } });
+  return out;
+}
 function ttsLib(){
   if(ttsMod) return Promise.resolve(ttsMod);
-  /* the wasm files must match the exact onnxruntime build the ESM bundle pulls,
-     so read that version out of the bundle instead of hard-coding it */
   return fetch(TTS_URL).then(function(r){ return r.ok?r.text():""; })
     .catch(function(){ return ""; })
     .then(function(src){
-      var m=/onnxruntime-web@([\d.]+)/.exec(src||"");
-      ortBase="https://cdn.jsdelivr.net/npm/onnxruntime-web@"+(m?m[1]:"1.27.0")+"/dist/";
+      ttsVers=ortCandidates(src);
       return import(TTS_URL);
     }).then(function(mod){ ttsMod=mod; return mod; });
 }
@@ -908,21 +924,47 @@ function ttsSession(){
   if(ttsSess&&ttsVoice===S.nVoiceDe) return Promise.resolve(ttsSess);
   ttsSess=null;
   return ttsLib().then(function(m){
-    return m.TtsSession.create({ voiceId:S.nVoiceDe, wasmPaths:{
-      onnxWasm:ortBase, piperData:PIPER_WASM+".data", piperWasm:PIPER_WASM+".wasm" } });
-  }).then(function(se){ ttsSess=se; ttsVoice=S.nVoiceDe; return se; });
+    var cfgs=(ttsVers||["1.27.0"]).map(function(v){
+      return { label:"ort "+v, paths:{
+        onnxWasm:"https://cdn.jsdelivr.net/npm/onnxruntime-web@"+v+"/dist/",
+        piperData:PIPER_WASM+".data", piperWasm:PIPER_WASM+".wasm" } };
+    });
+    /* last resort: let the library resolve its own runtime */
+    cfgs.push({label:"library default",paths:null});
+    var i=0, last=null;
+    function attempt(){
+      if(i>=cfgs.length) return Promise.reject(last||new Error("no wasm layout worked"));
+      var c=cfgs[i++], opt={voiceId:S.nVoiceDe};
+      if(c.paths) opt.wasmPaths=c.paths;
+      return m.TtsSession.create(opt).then(function(se){ ortUsed=c.label; return se; },
+        function(e){ last=e; nErr=c.label+" → "+String((e&&e.message)||e).slice(0,140); return attempt(); });
+    }
+    return attempt();
+  }).then(function(se){ ttsSess=se; ttsVoice=S.nVoiceDe; nErr=""; return se; });
 }
 function dropSession(){ ttsSess=null; ttsVoice=null; }
 /* Piper ships no Korean voice, and the neural alternatives need a romanizer
    that does not exist in the browser — Korean lines keep the device voice. */
-function nSynth(text,lang){
+/* vits-web rebuilds a ~60 MB inference session on EVERY call and never frees
+   it. One call is survivable; a chapter is not — that is what made the tab
+   die mid-playback. So it is a probe for the test button only, never the
+   engine behind a reading: during playback a dead engine fails loudly and
+   the app moves to the device voice instead of eating the phone. */
+function legacyOnce(text){
+  return piperLib().then(function(m){ return m.predict({text:text,voiceId:S.nVoiceDe}); });
+}
+function nSynth(text,lang,allowLegacy){
   if(lang==="ko") return Promise.reject(new Error("ko"));
-  if(ttsBroken) return piperLib().then(function(m){ return m.predict({text:text,voiceId:S.nVoiceDe}); });
+  if(ttsBroken){
+    if(!allowLegacy) return Promise.reject(new Error("no-engine"));
+    return legacyOnce(text);
+  }
   return ttsSession().then(function(se){ return se.predict(text); })
     .catch(function(e){
-      if(ttsBroken) throw e;
+      if(!nErr) nErr=String((e&&e.message)||e).slice(0,160);
       ttsBroken=true; dropSession();
-      return piperLib().then(function(m){ return m.predict({text:text,voiceId:S.nVoiceDe}); });
+      if(!allowLegacy) throw new Error("no-engine");
+      return legacyOnce(text);
     });
 }
 function sayText(c){ return c.deText||c.text; }
@@ -1022,22 +1064,25 @@ function speakNeural(c){
     noteProgress();
     mediaSession();
     prefetchNext();
-  }).catch(function(){
+  }).catch(function(err){
     if(!playing||my!==gen) return;
     setBusy(false);
     if(c.lang==="ko"){
       if(!koToasted){ koToasted=true; toast(t("n.koFallback")); }
       speakIos(c); return;
     }
-    /* one hiccup should not cost the good voice for the rest of the session:
-       retry the sentence once, then skip it, and only fall back after three */
+    /* the engine never started: retrying it per sentence only wastes time */
+    var gone=err&&err.message==="no-engine";
+    if(gone||nFails>=2){
+      nFails=0;
+      toast(t(gone?"n.engineGone":"n.synthErr"));
+      S.engine="ios"; lsSet(K_SET,S); buildSegments(); applyEngineUI();
+      speakIos(c); return;
+    }
+    /* one hiccup should not cost the good voice for the rest of the session */
     nFails++;
     if(nFails===1){ speakNeural(c); return; }
-    if(nFails<3){ toast(t("n.retry")); afterChunk(); return; }
-    nFails=0;
-    toast(t("n.synthErr"));
-    S.engine="ios"; lsSet(K_SET,S); buildSegments(); applyEngineUI();
-    speakIos(c);
+    toast(t("n.retry")); afterChunk();
   });
 }
 window.pickNVoice=function(){
@@ -1062,8 +1107,9 @@ function nStatus(){
     var have=(list||[]).indexOf(S.nVoiceDe)>=0;
     el.textContent=have?t("n.ready"):t("n.notReady");
     if(b) b.disabled=have;
-  }).catch(function(){
-    el.textContent=t("n.libErr");
+  }).catch(function(e){
+    el.textContent=t("n.libErr")+(nErr?"\n"+t("n.engineErr",nErr):
+      "\n"+t("n.engineErr",String((e&&e.message)||e).slice(0,160)));
     if(b) b.disabled=false;
   });
 }
@@ -1087,12 +1133,15 @@ window.downloadVoice=function(){
 window.testNeural=function(){
   var el=document.getElementById("nStatus");
   el.textContent=t("n.making");
-  nSynth(t("test.de"),"de").then(function(blob){
+  nSynth(t("test.de"),"de",true).then(function(blob){
     var a=ensureAudio();
     a.src=URL.createObjectURL(blob); a.playbackRate=S.speed;
     var pr=a.play(); if(pr&&pr.catch) pr.catch(function(){});
-    nStatus();
-  }).catch(function(){ el.textContent=t("n.dlErr"); });
+    el.textContent=ortUsed?t("n.engineOk",ortUsed):t("n.ready");
+    if(nErr) el.textContent+="\n"+t("n.engineErr",nErr);
+  }).catch(function(e){
+    el.textContent=t("n.engineErr",nErr||String((e&&e.message)||e).slice(0,160));
+  });
 };
 window.testKo=function(){
   var el=document.getElementById("koStatus");
