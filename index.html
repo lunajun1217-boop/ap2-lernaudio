@@ -369,7 +369,7 @@
 (function(){
 "use strict";
 
-var APP_VER="2026-10-18a";
+var APP_VER="2026-10-18b";
 var K_LIB="ap2_library_v1", K_SET="ap2_settings_v1", K_LANG="ap2_lang";
 var PDFJS="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 var PDFJS_WORKER="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -401,7 +401,7 @@ ko:{
  "n.libErr":"신경망 음성 모듈을 불러오지 못했습니다 (인터넷 확인)",
  "n.synthErr":"신경망 음성에 실패해 기기 음성으로 전환했습니다",
  "n.koFallback":"한국어는 기기 음성(Yuna)으로 읽습니다 — 이 부분만 화면을 켜 두세요",
- "n.engineGone":"신경망 음성을 시작하지 못해 기기 음성으로 바꿨습니다 · 설정에 원인이 적혀 있습니다",
+ "n.engineGone":"신경망 음성을 시작하지 못해 기기 음성으로 바꿨습니다 · 앱을 닫았다 열면 다른 경로로 다시 시도합니다",
  "n.engineErr":"엔진 오류: {0}",
  "n.engineOk":"✅ 엔진 준비됨 ({0})",
  "set.ko":"한국어 문단","ko.read":"읽기","ko.show":"화면만","ko.skip":"건너뛰기",
@@ -483,7 +483,7 @@ de:{
  "n.libErr":"Modul für neuronale Stimmen konnte nicht geladen werden (Internet prüfen)",
  "n.synthErr":"Neuronale Stimme fehlgeschlagen — zurück zur Gerätestimme",
  "n.koFallback":"Koreanisch liest die Gerätestimme (Yuna) — dafür Display an lassen",
- "n.engineGone":"Neuronale Stimme ließ sich nicht starten — zurück zur Gerätestimme; Grund steht in den Einstellungen",
+ "n.engineGone":"Neuronale Stimme ließ sich nicht starten — zurück zur Gerätestimme; beim nächsten Öffnen wird ein anderer Pfad versucht",
  "n.engineErr":"Engine-Fehler: {0}",
  "n.engineOk":"✅ Engine bereit ({0})",
  "set.ko":"Koreanische Absätze","ko.read":"vorlesen","ko.show":"nur anzeigen","ko.skip":"überspringen",
@@ -899,17 +899,32 @@ function piperLib(){
    reloads the page mid-playback. TtsSession keeps one session alive instead. */
 var ttsMod=null, ttsSess=null, ttsVoice=null, ttsVers=null, ttsBroken=false;
 var nErr="", ortUsed="";
-/* piper-tts-web depends on onnxruntime-web with a CARET range, and jsDelivr
-   re-resolves that range every time it rebuilds the bundle — so the same
-   pinned URL quietly changed runtime under us (1.27 now; it was not before),
-   and 1.27 dropped wasm variants the older one shipped. Pinning one version
-   here would only move the next breakage, so collect the candidates and try
-   them: whatever jsDelivr resolves next, one of these layouts fits. */
+/* piper-tts-web depends on onnxruntime-web through a CARET range, and jsDelivr
+   re-resolves that range every time it rebuilds the bundle — the same pinned
+   URL quietly changed runtime under us. The library's own default still points
+   at onnxruntime 1.18, and 1.18 ships NO .mjs loader at all, so the runtime
+   404s on ort-wasm-simd-threaded.mjs and reports the useless "no available
+   backend found".
+
+   Two facts, both measured against the live CDN rather than assumed:
+     · a build is only usable if it has the .mjs loader — 1.20 or newer;
+     · onnxruntime latches its wasm backend on the FIRST create(), so one
+       failed attempt poisons the page. There is no retrying within a load.
+   Hence: newest usable build, ONE attempt, and if it fails remember that and
+   begin at the next candidate on the next load. */
+var K_ORT="ap2_ort_skip_v1";
 function ortCandidates(src){
-  var seen={}, out=[], re=/onnxruntime-web[@\/]([\d]+\.[\d]+\.[\d]+)/g, m;
-  while((m=re.exec(src||""))) if(!seen[m[1]]){ seen[m[1]]=1; out.push(m[1]); }
-  ["1.27.0","1.18.0"].forEach(function(v){ if(!seen[v]){ seen[v]=1; out.push(v); } });
-  return out;
+  var seen={}, got=[], re=/onnxruntime-web[@\/]([\d]+)\.([\d]+)\.([\d]+)/g, m;
+  while((m=re.exec(src||""))){
+    var v=m[1]+"."+m[2]+"."+m[3];
+    if(Number(m[1])===1&&Number(m[2])>=20&&!seen[v]){
+      seen[v]=1; got.push([Number(m[2]),Number(m[3]),v]);
+    }
+  }
+  got.sort(function(a,b){ return b[0]-a[0]||b[1]-a[1]; });
+  var list=got.map(function(x){ return x[2]; });
+  if(list.indexOf("1.27.0")<0) list.push("1.27.0");   /* verified working */
+  return list;
 }
 function ttsLib(){
   if(ttsMod) return Promise.resolve(ttsMod);
@@ -924,22 +939,22 @@ function ttsSession(){
   if(ttsSess&&ttsVoice===S.nVoiceDe) return Promise.resolve(ttsSess);
   ttsSess=null;
   return ttsLib().then(function(m){
-    var cfgs=(ttsVers||["1.27.0"]).map(function(v){
-      return { label:"ort "+v, paths:{
-        onnxWasm:"https://cdn.jsdelivr.net/npm/onnxruntime-web@"+v+"/dist/",
-        piperData:PIPER_WASM+".data", piperWasm:PIPER_WASM+".wasm" } };
-    });
-    /* last resort: let the library resolve its own runtime */
-    cfgs.push({label:"library default",paths:null});
-    var i=0, last=null;
-    function attempt(){
-      if(i>=cfgs.length) return Promise.reject(last||new Error("no wasm layout worked"));
-      var c=cfgs[i++], opt={voiceId:S.nVoiceDe};
-      if(c.paths) opt.wasmPaths=c.paths;
-      return m.TtsSession.create(opt).then(function(se){ ortUsed=c.label; return se; },
-        function(e){ last=e; nErr=c.label+" → "+String((e&&e.message)||e).slice(0,140); return attempt(); });
-    }
-    return attempt();
+    var list=(ttsVers&&ttsVers.length)?ttsVers:["1.27.0"];
+    var skip=0; try{ skip=parseInt(localStorage.getItem(K_ORT)||"0",10)||0; }catch(e){}
+    if(skip>=list.length||skip<0) skip=0;
+    var v=list[skip];
+    ortUsed="ort "+v;
+    return m.TtsSession.create({ voiceId:S.nVoiceDe, wasmPaths:{
+      onnxWasm:"https://cdn.jsdelivr.net/npm/onnxruntime-web@"+v+"/dist/",
+      piperData:PIPER_WASM+".data", piperWasm:PIPER_WASM+".wasm" } })
+      .catch(function(e){
+        /* this build cannot be used here and the page is now poisoned —
+           note it so the next load opens on the following candidate */
+        try{ localStorage.setItem(K_ORT,String((skip+1)%list.length)); }catch(e2){}
+        nErr="ort "+v+" → "+String((e&&e.message)||e).slice(0,140);
+        ortUsed="";
+        throw e;
+      });
   }).then(function(se){ ttsSess=se; ttsVoice=S.nVoiceDe; nErr=""; return se; });
 }
 function dropSession(){ ttsSess=null; ttsVoice=null; }
