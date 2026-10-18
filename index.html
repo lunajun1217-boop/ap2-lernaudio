@@ -369,7 +369,7 @@
 (function(){
 "use strict";
 
-var APP_VER="2026-10-18b";
+var APP_VER="2026-10-18c";
 var K_LIB="ap2_library_v1", K_SET="ap2_settings_v1", K_LANG="ap2_lang";
 var PDFJS="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 var PDFJS_WORKER="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
@@ -974,13 +974,32 @@ function nSynth(text,lang,allowLegacy){
     if(!allowLegacy) return Promise.reject(new Error("no-engine"));
     return legacyOnce(text);
   }
-  return ttsSession().then(function(se){ return se.predict(text); })
-    .catch(function(e){
+  /* Two very different failures used to be caught as one. If the SESSION
+     cannot be created the engine really is gone for this page load. If a
+     single predict() fails the engine is fine and only that sentence is not —
+     treating the second as the first is what stopped playback mid-reading. */
+  return ttsSession().then(
+    function(se){ return se.predict(text); },
+    function(e){
       if(!nErr) nErr=String((e&&e.message)||e).slice(0,160);
       ttsBroken=true; dropSession();
       if(!allowLegacy) throw new Error("no-engine");
       return legacyOnce(text);
     });
+}
+/* onnxruntime runs ONE inference at a time per session. The prefetcher and the
+   sentence actually being played both called predict() on the same session, so
+   the second one failed — which, with the bug above, looked like a dead engine.
+   Every synthesis now queues on this single chain, and a sentence already being
+   made is awaited instead of started a second time. */
+var synthChain=Promise.resolve(), inFlight={};
+function queueSynth(text,lang,allowLegacy,ms){
+  function run(){ return withTimeout(nSynth(text,lang,allowLegacy),ms||90000); }
+  var p=synthChain.then(run,run);
+  /* the chain must survive a failed job, and must keep holding the slot until
+     a timed-out predict has really finished, or the next one collides with it */
+  synthChain=p.catch(function(){});
+  return p;
 }
 function sayText(c){ return c.deText||c.text; }
 function ckey(c){ return (c.lang||"de")+"|"+S.nVoiceDe+"|"+sayText(c); }
@@ -1002,9 +1021,14 @@ function withTimeout(pr,ms){
 function nAudio(c){
   var k=ckey(c);
   if(cacheMap[k]) return Promise.resolve(cacheMap[k]);
-  return withTimeout(nSynth(sayText(c),c.lang),60000).then(function(blob){
+  /* already being made by the prefetcher: wait for that one */
+  if(inFlight[k]) return inFlight[k];
+  var p=queueSynth(sayText(c),c.lang).then(function(blob){
+    delete inFlight[k];
     var url=URL.createObjectURL(blob); cachePut(k,url); return url;
-  });
+  },function(e){ delete inFlight[k]; throw e; });
+  inFlight[k]=p;
+  return p;
 }
 function ensureAudio(){
   if(AU) return AU;
@@ -1049,20 +1073,16 @@ function releaseAudio(){
   try{ AU.pause(); AU.removeAttribute("src"); AU.load(); }catch(e){}
 }
 function clearWatch(){ if(iosWatch){ clearTimeout(iosWatch); iosWatch=null; } }
-var preChain=Promise.resolve();
 function prefetchNext(){
-  if(!neural()) return;
+  if(!neural()||ttsBroken) return;
   var n=idx;
   for(var k=0;k<3;k++){
     n=n<endIndex()?n+1:startIndex();
     var c=chunks[n];
     if(!c||c.lang==="ko"||cacheMap[ckey(c)]) continue;
-    (function(cc){
-      preChain=preChain.then(function(){
-        if(!playing||cacheMap[ckey(cc)]) return;
-        return nAudio(cc).catch(function(){});
-      });
-    })(c);
+    /* no private chain any more: nAudio queues on the one synthesis chain, so
+       the sentence being listened to is never racing its own prefetch */
+    nAudio(c).catch(function(){});
   }
 }
 function speakNeural(c){
@@ -1087,17 +1107,22 @@ function speakNeural(c){
       speakIos(c); return;
     }
     /* the engine never started: retrying it per sentence only wastes time */
-    var gone=err&&err.message==="no-engine";
-    if(gone||nFails>=2){
+    if(err&&err.message==="no-engine"){
       nFails=0;
-      toast(t(gone?"n.engineGone":"n.synthErr"));
+      toast(t("n.engineGone"));
       S.engine="ios"; lsSet(K_SET,S); buildSegments(); applyEngineUI();
       speakIos(c); return;
     }
-    /* one hiccup should not cost the good voice for the rest of the session */
+    /* a single sentence failed. nFails is reset on every success, so these are
+       consecutive failures: retry once, then skip the sentence and keep the
+       good voice — one bad sentence must not end the reading. */
     nFails++;
     if(nFails===1){ speakNeural(c); return; }
-    toast(t("n.retry")); afterChunk();
+    if(nFails<5){ toast(t("n.retry")); afterChunk(); return; }
+    nFails=0;
+    toast(t("n.synthErr"));
+    S.engine="ios"; lsSet(K_SET,S); buildSegments(); applyEngineUI();
+    speakIos(c);
   });
 }
 window.pickNVoice=function(){
@@ -1148,7 +1173,7 @@ window.downloadVoice=function(){
 window.testNeural=function(){
   var el=document.getElementById("nStatus");
   el.textContent=t("n.making");
-  nSynth(t("test.de"),"de",true).then(function(blob){
+  queueSynth(t("test.de"),"de",true,120000).then(function(blob){
     var a=ensureAudio();
     a.src=URL.createObjectURL(blob); a.playbackRate=S.speed;
     var pr=a.play(); if(pr&&pr.catch) pr.catch(function(){});
@@ -1294,7 +1319,10 @@ function skipKoActive(){
 function speakIos(c){
   if(!playing) return;
   curChunk=c;
-  if(neural()) releaseAudio();
+  /* Unconditionally: the engine may have switched to the device voice while the
+     element still held a source, and on iOS that silently swallows the voice.
+     releaseAudio() is a no-op when no element was ever created. */
+  releaseAudio();
   var started=false;
   var u=new SpeechSynthesisUtterance(c.text);
   u.onstart=function(){ started=true; clearWatch(); };
